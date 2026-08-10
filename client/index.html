@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MU Legends Online - Dark Fantasy MMORPG</title>
+  <link rel="stylesheet" href="css/game.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen">
+    <div class="login-bg"></div>
+    <div class="login-container">
+      <div class="logo-container">
+        <h1 class="game-title">MU LEGENDS</h1>
+        <p class="game-subtitle">Silk Road Chronicles</p>
+      </div>
+      
+      <div class="login-form">
+        <input type="text" id="player-name" placeholder="Enter Character Name" maxlength="16">
+        
+        <div class="class-selection">
+          <h3>Select Your Class</h3>
+          <div class="class-options">
+            <div class="class-option selected" data-class="darkKnight">
+              <div class="class-icon">⚔️</div>
+              <div class="class-name">Dark Knight</div>
+              <div class="class-desc">Devastating sword master</div>
+              <div class="class-stats">STR: ★★★ | AGI: ★★ | VIT: ★★★</div>
+            </div>
+            <div class="class-option" data-class="darkWizard">
+              <div class="class-icon">🔮</div>
+              <div class="class-name">Dark Wizard</div>
+              <div class="class-desc">Master of dark magic</div>
+              <div class="class-stats">STR: ★ | INT: ★★★★ | VIT: ★★</div>
+            </div>
+            <div class="class-option" data-class="fairyElf">
+              <div class="class-icon">🏹</div>
+              <div class="class-name">Fairy Elf</div>
+              <div class="class-desc">Swift archer & healer</div>
+              <div class="class-stats">STR: ★★ | AGI: ★★★★ | INT: ★★</div>
+            </div>
+            <div class="class-option" data-class="bicheon">
+              <div class="class-icon">🗡️</div>
+              <div class="class-name">Bicheon</div>
+              <div class="class-desc">Chinese martial artist</div>
+              <div class="class-stats">STR: ★★★ | AGI: ★★★ | VIT: ★★★</div>
+            </div>
+            <div class="class-option" data-class="heuksal">
+              <div class="class-icon">🌙</div>
+              <div class="class-name">Heuksal</div>
+              <div class="class-desc">Shadow assassin</div>
+              <div class="class-stats">STR: ★★ | AGI: ★★★★ | VIT: ★★</div>
+            </div>
+          </div>
+        </div>
+        
+        <button id="play-button" class="play-btn">
+          <span>ENTER GAME</span>
+        </button>
+        
+        <div class="server-info">
+          <span class="server-status online"></span>
+          Server: MU-LEGENDS-01 | Players Online: <span id="online-count">0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="screen hidden">
+    <div id="game-container"></div>
+    
+    <!-- HUD -->
+    <div id="hud">
+      <!-- Player Info Panel (MU Style) -->
+      <div id="player-info">
+        <div class="player-portrait">
+          <div class="portrait-frame"></div>
+          <div class="class-emblem" id="class-emblem">⚔️</div>
+        </div>
+        <div class="player-details">
+          <div class="player-name-row">
+            <span class="player-name-display"></span>
+            <span class="player-level-badge">Lv.<span id="level-display">1</span></span>
+          </div>
+          <div class="stat-bar health-bar">
+            <div class="bar-fill" id="health-fill"></div>
+            <div class="bar-text">HP <span id="health-current">100</span>/<span id="health-max">100</span></div>
+          </div>
+          <div class="stat-bar mana-bar">
+            <div class="bar-fill" id="mana-fill"></div>
+            <div class="bar-text">MP <span id="mana-current">50</span>/<span id="mana-max">50</span></div>
+          </div>
+          <div class="stat-bar xp-bar">
+            <div class="bar-fill" id="xp-fill"></div>
+            <div class="bar-text">EXP <span id="xp-current">0</span>/<span id="xp-max">100</span></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Combo Counter -->
+      <div id="combo-display" class="hidden">
+        <span id="combo-count">0</span>
+        <span class="combo-text">COMBO!</span>
+      </div>
+      
+      <!-- Target Info -->
+      <div id="target-info" class="hidden">
+        <div class="target-header">
+          <span class="target-level">Lv.<span id="target-level">1</span></span>
+          <span class="target-name"></span>
+        </div>
+        <div class="stat-bar target-health-bar">
+          <div class="bar-fill" id="target-health-fill"></div>
+          <div class="bar-text"><span id="target-health-current">100</span>/<span id="target-health-max">100</span></div>
+        </div>
+      </div>
+      
+      <!-- Skill Bar (MU Style) -->
+      <div id="skill-bar">
+        <div class="skill-row">
+          <div class="skill-slot" data-skill="0" data-key="1">
+            <div class="skill-icon"></div>
+            <div class="skill-key">1</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="1" data-key="2">
+            <div class="skill-icon"></div>
+            <div class="skill-key">2</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="2" data-key="3">
+            <div class="skill-icon"></div>
+            <div class="skill-key">3</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="3" data-key="4">
+            <div class="skill-icon"></div>
+            <div class="skill-key">4</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+        </div>
+        <div class="potion-row">
+          <div class="skill-slot item-slot" data-item="Small Heal Potion" data-key="F1">
+            <div class="skill-icon">❤️</div>
+            <div class="skill-key">F1</div>
+            <div class="item-count">20</div>
+          </div>
+          <div class="skill-slot item-slot" data-item="Small Mana Potion" data-key="F2">
+            <div class="skill-icon">💙</div>
+            <div class="skill-key">F2</div>
+            <div class="item-count">20</div>
+          </div>
+          <div class="skill-slot item-slot" data-item="Heal Potion" data-key="F3">
+            <div class="skill-icon">💗</div>
+            <div class="skill-key">F3</div>
+            <div class="item-count">0</div>
+          </div>
+          <div class="skill-slot item-slot" data-item="Mana Potion" data-key="F4">
+            <div class="skill-icon">💜</div>
+            <div class="skill-key">F4</div>
+            <div class="item-count">0</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Currency Display -->
+      <div id="currency-display">
+        <div class="currency zen">
+          <span class="currency-icon">💰</span>
+          <span class="currency-amount" id="zen-amount">10000</span>
+          <span class="currency-label">Zen</span>
+        </div>
+      </div>
+      
+      <!-- Minimap -->
+      <div id="minimap">
+        <div class="minimap-header">
+          <span id="area-name">Lorencia</span>
+        </div>
+        <canvas id="minimap-canvas" width="160" height="160"></canvas>
+        <div class="minimap-coords">
+          <span id="coord-x">0</span>, <span id="coord-z">0</span>
+        </div>
+      </div>
+      
+      <!-- Quest Tracker -->
+      <div id="quest-tracker">
+        <div class="tracker-header">
+          <span class="tracker-icon">📜</span> Quest Log
+        </div>
+        <div id="quest-list"></div>
+      </div>
+      
+      <!-- Chat Box -->
+      <div id="chat-box">
+        <div class="chat-tabs">
+          <button class="chat-tab active" data-channel="all">All</button>
+          <button class="chat-tab" data-channel="system">System</button>
+          <button class="chat-tab" data-channel="trade">Trade</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div class="chat-input-container">
+          <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="200">
+        </div>
+      </div>
+      
+      <!-- Menu Buttons -->
+      <div id="menu-buttons">
+        <button class="menu-btn" id="character-btn" title="Character (C)">
+          <span class="btn-icon">📊</span>
+          <span class="btn-text">Stats</span>
+        </button>
+        <button class="menu-btn" id="inventory-btn" title="Inventory (I)">
+          <span class="btn-icon">🎒</span>
+          <span class="btn-text">Inven</span>
+        </button>
+        <button class="menu-btn" id="quest-btn" title="Quests (Q)">
+          <span class="btn-icon">📜</span>
+          <span class="btn-text">Quest</span>
+        </button>
+        <button class="menu-btn" id="job-btn" title="Silk Road Job (J)">
+          <span class="btn-icon">🐪</span>
+          <span class="btn-text">Job</span>
+        </button>
+        <button class="menu-btn" id="enhance-btn" title="Enhancement (E)">
+          <span class="btn-icon">✨</span>
+          <span class="btn-text">Forge</span>
+        </button>
+      </div>
+      
+      <!-- Stat Points Indicator -->
+      <div id="stat-points-indicator" class="hidden">
+        <span class="stat-points-icon">⬆️</span>
+        <span id="free-stat-points">0</span> Stat Points Available!
+      </div>
+    </div>
+    
+    <!-- Character Panel -->
+    <div id="character-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Character Status</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="character-info-row">
+          <span class="char-name"></span>
+          <span class="char-class"></span>
+          <span class="char-level">Level <span id="char-level">1</span></span>
+        </div>
+        
+        <div class="stat-allocation">
+          <h3>Stats <span class="free-points">(Points: <span id="free-points-display">0</span>)</span></h3>
+          <div class="stat-row">
+            <span class="stat-name">Strength</span>
+            <span class="stat-value" id="stat-strength">10</span>
+            <button class="stat-add-btn" data-stat="strength">+</button>
+          </div>
+          <div class="stat-row">
+            <span class="stat-name">Agility</span>
+            <span class="stat-value" id="stat-agility">10</span>
+            <button class="stat-add-btn" data-stat="agility">+</button>
+          </div>
+          <div class="stat-row">
+            <span class="stat-name">Vitality</span>
+            <span class="stat-value" id="stat-vitality">10</span>
+            <button class="stat-add-btn" data-stat="vitality">+</button>
+          </div>
+          <div class="stat-row">
+            <span class="stat-name">Energy</span>
+            <span class="stat-value" id="stat-energy">10</span>
+            <button class="stat-add-btn" data-stat="energy">+</button>
+          </div>
+        </div>
+        
+        <div class="combat-stats">
+          <h3>Combat Stats</h3>
+          <div class="combat-stat"><span>Attack Power:</span> <span id="combat-damage">10</span></div>
+          <div class="combat-stat"><span>Magic Power:</span> <span id="combat-magic">0</span></div>
+          <div class="combat-stat"><span>Defense:</span> <span id="combat-defense">5</span></div>
+          <div class="combat-stat"><span>Attack Speed:</span> <span id="combat-speed">1.00</span></div>
+          <div class="combat-stat"><span>Crit Chance:</span> <span id="combat-crit">5%</span></div>
+        </div>
+        
+        <h3>Equipment</h3>
+        <div id="equipment-slots">
+          <div class="equip-row">
+            <div class="equip-slot" data-slot="mainHand"><span class="slot-label">Weapon</span><span class="slot-item">Empty</span></div>
+            <div class="equip-slot" data-slot="offHand"><span class="slot-label">Shield</span><span class="slot-item">Empty</span></div>
+          </div>
+          <div class="equip-row">
+            <div class="equip-slot" data-slot="head"><span class="slot-label">Helm</span><span class="slot-item">Empty</span></div>
+            <div class="equip-slot" data-slot="chest"><span class="slot-label">Armor</span><span class="slot-item">Empty</span></div>
+          </div>
+          <div class="equip-row">
+            <div class="equip-slot" data-slot="legs"><span class="slot-label">Pants</span><span class="slot-item">Empty</span></div>
+            <div class="equip-slot" data-slot="feet"><span class="slot-label">Boots</span><span class="slot-item">Empty</span></div>
+          </div>
+          <div class="equip-row">
+            <div class="equip-slot wings-slot" data-slot="wings"><span class="slot-label">Wings</span><span class="slot-item">Empty</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Inventory Panel -->
+    <div id="inventory-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Inventory</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div class="inventory-header">
+          <span class="gold-display">💰 <span id="gold-amount">10000</span> Zen</span>
+        </div>
+        <div id="inventory-grid"></div>
+      </div>
+    </div>
+    
+    <!-- Quest Panel -->
+    <div id="quest-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Quest Journal</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <div id="available-quests">
+          <h3>Available Quests</h3>
+          <div id="available-quest-list"></div>
+        </div>
+        <div id="active-quests">
+          <h3>Active Quests</h3>
+          <div id="active-quest-list"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Job Panel (Silkroad) -->
+    <div id="job-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Silk Road Jobs</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <p class="job-intro">Choose your path on the Silk Road:</p>
+        <div class="job-options">
+          <div class="job-option" data-job="trader">
+            <div class="job-icon">🐪</div>
+            <div class="job-name">Trader</div>
+            <div class="job-desc">Transport goods along trade routes for profit. Higher risk, higher reward!</div>
+          </div>
+          <div class="job-option" data-job="thief">
+            <div class="job-icon">🗡️</div>
+            <div class="job-name">Thief</div>
+            <div class="job-desc">Ambush traders and steal their goods. PvP enabled when active.</div>
+          </div>
+          <div class="job-option" data-job="hunter">
+            <div class="job-icon">🛡️</div>
+            <div class="job-name">Hunter</div>
+            <div class="job-desc">Protect traders from thieves. Earn bounties for defeating bandits.</div>
+          </div>
+        </div>
+        <div class="current-job">
+          Current Job: <span id="current-job">None</span>
+        </div>
+        <button class="job-clear-btn" id="clear-job">Clear Job</button>
+        
+        <div class="trade-routes">
+          <h3>Trade Routes</h3>
+          <div id="trade-route-list"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Enhancement Panel -->
+    <div id="enhance-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Chaos Forge</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <p class="forge-intro">Enhance your equipment using Jewels</p>
+        <div class="enhance-info">
+          <p>• Jewel of Bless: Safe enhancement up to +6</p>
+          <p>• Jewel of Soul: Higher potential, but may fail</p>
+          <p>• Items above +6 may be destroyed on failure!</p>
+        </div>
+        <div class="enhance-area">
+          <div class="enhance-slot" id="enhance-item-slot">
+            <span>Drop item here</span>
+          </div>
+          <div class="jewel-selection">
+            <button class="jewel-btn" data-jewel="bless">Use Bless</button>
+            <button class="jewel-btn" data-jewel="soul">Use Soul</button>
+          </div>
+        </div>
+        <div id="enhance-result"></div>
+      </div>
+    </div>
+    
+    <!-- Death Screen -->
+    <div id="death-screen" class="overlay hidden">
+      <div class="death-content">
+        <h1>YOU DIED</h1>
+        <p class="death-penalty">Lost <span id="xp-lost">0</span> XP</p>
+        <p>Respawning in <span id="respawn-timer">5</span> seconds...</p>
+      </div>
+    </div>
+    
+    <!-- Level Up -->
+    <div id="level-up-notification" class="notification hidden">
+      <div class="level-up-effect"></div>
+      <h2>LEVEL UP!</h2>
+      <p>You reached level <span id="new-level">2</span></p>
+      <p class="stat-points-gained">+5 Stat Points</p>
+    </div>
+    
+    <!-- Boss Warning -->
+    <div id="boss-warning" class="notification hidden">
+      <h2>⚠️ BOSS ALERT ⚠️</h2>
+      <p id="boss-name">Kundun</p>
+    </div>
+    
+    <!-- Damage Numbers -->
+    <div id="damage-numbers"></div>
+    
+    <!-- Item Pickup Notifications -->
+    <div id="item-notifications"></div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>

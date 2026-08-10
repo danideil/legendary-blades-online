@@ -1,0 +1,19 @@
+{
+  "name": "mmorpg-3d",
+  "version": "1.0.0",
+  "description": "A 3D MMORPG game built with Three.js and Socket.io",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "uuid": "^9.0.0"
+  },
+  "keywords": ["mmorpg", "game", "3d", "multiplayer"],
+  "author": "",
+  "license": "MIT"
+}
