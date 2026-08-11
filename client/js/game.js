@@ -302,32 +302,195 @@ function initSocket() {
 function createPlayerMesh(playerData, isLocal = false) {
   const group = new THREE.Group();
 
-  // Body
-  const bodyGeometry = new THREE.CapsuleGeometry(0.5, 1.5, 4, 8);
-  const bodyColor = {
-    darkKnight: 0xff2222,
-    darkWizard: 0x9966ff,
-    fairyElf: 0x66ff66,
-    bicheon: 0xffcc00,
-    heuksal: 0xff66ff
-  }[playerData.class] || 0xffffff;
+  // Color scheme for each class
+  const classColors = {
+    darkKnight: { main: 0xcc2222, accent: 0xff4444, skin: 0xffccaa },
+    darkWizard: { main: 0x6633cc, accent: 0x9966ff, skin: 0xeeddcc },
+    fairyElf: { main: 0x22aa44, accent: 0x66ff88, skin: 0xffeecc },
+    bicheon: { main: 0xcc8800, accent: 0xffcc00, skin: 0xddbb99 },
+    heuksal: { main: 0x8822aa, accent: 0xcc66ff, skin: 0xddccee }
+  };
+  const colors = classColors[playerData.class] || { main: 0x888888, accent: 0xaaaaaa, skin: 0xffccaa };
 
-  const bodyMaterial = new THREE.MeshPhongMaterial({ 
-    color: bodyColor,
-    emissive: bodyColor,
-    emissiveIntensity: 0.1
+  // Base platform/shadow circle
+  const shadowGeometry = new THREE.CircleGeometry(0.8, 16);
+  const shadowMaterial = new THREE.MeshBasicMaterial({ 
+    color: isLocal ? 0x44ff44 : 0x4444ff, 
+    transparent: true, 
+    opacity: 0.4 
+  });
+  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.02;
+  group.add(shadow);
+
+  // Legs
+  const legGeometry = new THREE.CylinderGeometry(0.15, 0.2, 1, 8);
+  const legMaterial = new THREE.MeshStandardMaterial({ color: colors.main, roughness: 0.7 });
+  
+  const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+  leftLeg.position.set(-0.25, 0.5, 0);
+  leftLeg.castShadow = true;
+  group.add(leftLeg);
+  
+  const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+  rightLeg.position.set(0.25, 0.5, 0);
+  rightLeg.castShadow = true;
+  group.add(rightLeg);
+
+  // Body/Torso
+  const bodyGeometry = new THREE.CylinderGeometry(0.4, 0.35, 1.2, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: colors.main,
+    roughness: 0.6,
+    metalness: 0.2
   });
   const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-  body.position.y = 1.25;
+  body.position.y = 1.5;
   body.castShadow = true;
   group.add(body);
 
-  // Name sprite
+  // Armor/Chest plate (for knights)
+  if (playerData.class === 'darkKnight' || playerData.class === 'bicheon') {
+    const armorGeometry = new THREE.BoxGeometry(0.7, 0.6, 0.5);
+    const armorMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0x555555, 
+      roughness: 0.3, 
+      metalness: 0.8 
+    });
+    const armor = new THREE.Mesh(armorGeometry, armorMaterial);
+    armor.position.set(0, 1.6, 0.1);
+    group.add(armor);
+  }
+
+  // Arms
+  const armGeometry = new THREE.CylinderGeometry(0.1, 0.12, 0.9, 8);
+  const armMaterial = new THREE.MeshStandardMaterial({ color: colors.main, roughness: 0.7 });
+  
+  const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+  leftArm.position.set(-0.55, 1.5, 0);
+  leftArm.rotation.z = 0.3;
+  leftArm.castShadow = true;
+  group.add(leftArm);
+  
+  const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+  rightArm.position.set(0.55, 1.5, 0);
+  rightArm.rotation.z = -0.3;
+  rightArm.castShadow = true;
+  group.add(rightArm);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.35, 16, 16);
+  const headMaterial = new THREE.MeshStandardMaterial({ color: colors.skin, roughness: 0.8 });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 2.4;
+  head.castShadow = true;
+  group.add(head);
+
+  // Hair/Helmet based on class
+  if (playerData.class === 'darkKnight') {
+    const helmetGeometry = new THREE.ConeGeometry(0.4, 0.5, 8);
+    const helmetMaterial = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8 });
+    const helmet = new THREE.Mesh(helmetGeometry, helmetMaterial);
+    helmet.position.y = 2.7;
+    group.add(helmet);
+  } else if (playerData.class === 'darkWizard') {
+    const hatGeometry = new THREE.ConeGeometry(0.45, 0.8, 8);
+    const hatMaterial = new THREE.MeshStandardMaterial({ color: 0x220066 });
+    const hat = new THREE.Mesh(hatGeometry, hatMaterial);
+    hat.position.y = 2.9;
+    group.add(hat);
+  } else {
+    // Hair for other classes
+    const hairGeometry = new THREE.SphereGeometry(0.38, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    const hairMaterial = new THREE.MeshStandardMaterial({ color: colors.accent });
+    const hair = new THREE.Mesh(hairGeometry, hairMaterial);
+    hair.position.y = 2.5;
+    group.add(hair);
+  }
+
+  // Weapon based on class
+  const weaponGroup = new THREE.Group();
+  if (playerData.class === 'darkKnight' || playerData.class === 'bicheon') {
+    // Sword
+    const bladeGeometry = new THREE.BoxGeometry(0.1, 1.2, 0.05);
+    const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.2 });
+    const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+    blade.position.y = 0.6;
+    weaponGroup.add(blade);
+    
+    const hiltGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
+    const hiltMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+    const hilt = new THREE.Mesh(hiltGeometry, hiltMaterial);
+    weaponGroup.add(hilt);
+    
+    weaponGroup.position.set(0.8, 1.3, 0);
+    weaponGroup.rotation.z = -0.5;
+  } else if (playerData.class === 'darkWizard') {
+    // Staff
+    const staffGeometry = new THREE.CylinderGeometry(0.05, 0.08, 2, 8);
+    const staffMaterial = new THREE.MeshStandardMaterial({ color: 0x4a2800 });
+    const staff = new THREE.Mesh(staffGeometry, staffMaterial);
+    staff.position.y = 1;
+    weaponGroup.add(staff);
+    
+    const orbGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+    const orbMaterial = new THREE.MeshStandardMaterial({ 
+      color: 0x9966ff, 
+      emissive: 0x6633cc, 
+      emissiveIntensity: 0.5 
+    });
+    const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+    orb.position.y = 2.1;
+    weaponGroup.add(orb);
+    game.glowMeshes.push({ mesh: orb, color: 0x9966ff });
+    
+    weaponGroup.position.set(0.7, 0, 0);
+  } else if (playerData.class === 'fairyElf') {
+    // Bow
+    const bowGeometry = new THREE.TorusGeometry(0.5, 0.03, 8, 16, Math.PI);
+    const bowMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+    const bow = new THREE.Mesh(bowGeometry, bowMaterial);
+    bow.rotation.z = Math.PI / 2;
+    bow.position.y = 0.5;
+    weaponGroup.add(bow);
+    
+    weaponGroup.position.set(0.7, 1.2, 0);
+  } else if (playerData.class === 'heuksal') {
+    // Daggers
+    const daggerGeometry = new THREE.ConeGeometry(0.05, 0.5, 4);
+    const daggerMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.9 });
+    const dagger1 = new THREE.Mesh(daggerGeometry, daggerMaterial);
+    dagger1.position.set(-0.6, 1.2, 0.3);
+    dagger1.rotation.x = -Math.PI / 4;
+    group.add(dagger1);
+    const dagger2 = new THREE.Mesh(daggerGeometry, daggerMaterial);
+    dagger2.position.set(0.6, 1.2, 0.3);
+    dagger2.rotation.x = -Math.PI / 4;
+    group.add(dagger2);
+  }
+  group.add(weaponGroup);
+
+  // Class aura/glow
+  const auraGeometry = new THREE.RingGeometry(0.6, 1, 32);
+  const auraMaterial = new THREE.MeshBasicMaterial({ 
+    color: colors.accent, 
+    transparent: true, 
+    opacity: 0.3,
+    side: THREE.DoubleSide
+  });
+  const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+  aura.rotation.x = -Math.PI / 2;
+  aura.position.y = 0.05;
+  group.add(aura);
+
+  // Name sprite with better visibility
   const nameSprite = createTextSprite(
     `${playerData.name} [Lv.${playerData.level}]`,
-    isLocal ? '#ffd700' : '#ffffff'
+    isLocal ? '#ffff00' : '#00ffff'
   );
-  nameSprite.position.y = 3;
+  nameSprite.position.y = 3.5;
+  nameSprite.scale.set(5, 1.5, 1);
   group.add(nameSprite);
 
   group.position.set(playerData.position.x, 0, playerData.position.z);
@@ -408,70 +571,452 @@ function updatePlayerWings() {
 function createNPCMesh(npcData) {
   const group = new THREE.Group();
 
-  let geometry, scale = 1, height = 1;
+  const color = monsterColors[npcData.type] || 0x888888;
+  let height = 1;
+  let scale = 1;
 
-  // Different shapes for different monsters
+  // Shadow circle under monster
+  const shadowGeometry = new THREE.CircleGeometry(npcData.boss ? 2 : 0.8, 16);
+  const shadowMaterial = new THREE.MeshBasicMaterial({ 
+    color: npcData.boss ? 0xff0000 : 0x660000, 
+    transparent: true, 
+    opacity: 0.4 
+  });
+  const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.02;
+  group.add(shadow);
+
+  // Create detailed monster based on type
   switch (npcData.type) {
     case 'budgeDragon':
-      geometry = new THREE.ConeGeometry(0.5, 1.2, 6);
-      scale = 1;
+      createDragonMesh(group, color, 1);
+      height = 1.5;
       break;
     case 'goldenGoblin':
-      geometry = new THREE.SphereGeometry(0.5, 8, 8);
+      createGoblinMesh(group, 0xFFD700);
+      height = 1;
       scale = 0.8;
       break;
     case 'kundun':
-      geometry = new THREE.ConeGeometry(1.5, 4, 8);
+      createBossDemonMesh(group, color);
+      height = 4;
       scale = 2;
-      height = 2;
       break;
     case 'deathKnight':
-      geometry = new THREE.CapsuleGeometry(0.7, 2, 4, 8);
+      createKnightMesh(group, color);
+      height = 2.5;
       scale = 1.5;
-      height = 1.5;
+      break;
+    case 'spider':
+      createSpiderMesh(group, color);
+      height = 0.8;
+      break;
+    case 'hound':
+      createHoundMesh(group, color);
+      height = 1;
+      break;
+    case 'bandit':
+    case 'eliteThief':
+      createBanditMesh(group, color);
+      height = 2;
       break;
     default:
-      geometry = new THREE.CapsuleGeometry(0.4, 1.2, 4, 8);
+      createDefaultMonsterMesh(group, color);
+      height = 1.5;
   }
-
-  const color = monsterColors[npcData.type] || 0x888888;
-  const material = new THREE.MeshPhongMaterial({
-    color: color,
-    emissive: npcData.boss ? color : 0x000000,
-    emissiveIntensity: npcData.boss ? 0.3 : 0
-  });
-
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.position.y = height;
-  mesh.castShadow = true;
-  mesh.scale.setScalar(scale);
-  group.add(mesh);
 
   // Health bar
   const healthBar = createHealthBar(npcData.boss);
-  healthBar.position.y = height * 2 + 1;
+  healthBar.position.y = height * scale + 1;
   group.add(healthBar);
 
-  // Name sprite
-  const nameColor = npcData.boss ? '#ff0000' : (npcData.rare ? '#ffd700' : '#ff6666');
+  // Name sprite with better colors
+  const nameColor = npcData.boss ? '#ff3333' : (npcData.rare ? '#ffdd00' : '#ff8888');
   const nameSprite = createTextSprite(`${npcData.name} [Lv.${npcData.level}]`, nameColor);
-  nameSprite.position.y = height * 2 + 1.5;
+  nameSprite.position.y = height * scale + 1.5;
+  nameSprite.scale.set(5, 1.5, 1);
   group.add(nameSprite);
 
+  // Boss aura
+  if (npcData.boss) {
+    const auraGeometry = new THREE.RingGeometry(1.5, 2.5, 32);
+    const auraMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff0000, 
+      transparent: true, 
+      opacity: 0.4,
+      side: THREE.DoubleSide
+    });
+    const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+    aura.rotation.x = -Math.PI / 2;
+    aura.position.y = 0.1;
+    group.add(aura);
+    game.glowMeshes.push({ mesh: aura, color: 0xff0000 });
+  }
+
   group.position.set(npcData.position.x, 0, npcData.position.z);
-  group.userData = { type: 'npc', id: npcData.id };
+  group.userData = { type: 'npc', npcId: npcData.id };
 
   game.scene.add(group);
 
   npcData.mesh = group;
   npcData.healthBar = healthBar;
 
-  // Boss glow
-  if (npcData.boss) {
-    game.glowMeshes.push({ mesh: mesh, color: color });
+  return group;
+}
+
+// Monster creation helpers
+function createDragonMesh(group, color, scale) {
+  // Body
+  const bodyGeometry = new THREE.ConeGeometry(0.6, 1.5, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.6 });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 1;
+  body.rotation.x = 0.3;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.set(0, 1.8, 0.4);
+  head.castShadow = true;
+  group.add(head);
+
+  // Wings
+  const wingGeometry = new THREE.PlaneGeometry(1.2, 0.8);
+  const wingMaterial = new THREE.MeshStandardMaterial({ 
+    color: color, 
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.8
+  });
+  const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+  leftWing.position.set(-0.8, 1.2, -0.2);
+  leftWing.rotation.y = -0.5;
+  leftWing.rotation.z = 0.3;
+  group.add(leftWing);
+
+  const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+  rightWing.position.set(0.8, 1.2, -0.2);
+  rightWing.rotation.y = 0.5;
+  rightWing.rotation.z = -0.3;
+  group.add(rightWing);
+
+  // Tail
+  const tailGeometry = new THREE.ConeGeometry(0.15, 1, 6);
+  const tail = new THREE.Mesh(tailGeometry, bodyMaterial);
+  tail.position.set(0, 0.6, -0.8);
+  tail.rotation.x = -1.2;
+  group.add(tail);
+
+  // Eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.15, 1.9, 0.7);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.15, 1.9, 0.7);
+  group.add(rightEye);
+}
+
+function createGoblinMesh(group, color) {
+  // Body
+  const bodyGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: color, 
+    emissive: color,
+    emissiveIntensity: 0.3,
+    roughness: 0.4,
+    metalness: 0.6
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 0.7;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.35, 8, 8);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.y = 1.3;
+  group.add(head);
+
+  // Big ears
+  const earGeometry = new THREE.ConeGeometry(0.15, 0.4, 4);
+  const leftEar = new THREE.Mesh(earGeometry, bodyMaterial);
+  leftEar.position.set(-0.3, 1.5, 0);
+  leftEar.rotation.z = 0.5;
+  group.add(leftEar);
+  const rightEar = new THREE.Mesh(earGeometry, bodyMaterial);
+  rightEar.position.set(0.3, 1.5, 0);
+  rightEar.rotation.z = -0.5;
+  group.add(rightEar);
+
+  // Eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.08, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.12, 1.35, 0.3);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.12, 1.35, 0.3);
+  group.add(rightEye);
+
+  // Gold sparkle effect
+  game.glowMeshes.push({ mesh: body, color: color });
+}
+
+function createBossDemonMesh(group, color) {
+  // Large body
+  const bodyGeometry = new THREE.CylinderGeometry(1, 1.5, 3, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: color,
+    emissive: color,
+    emissiveIntensity: 0.3,
+    roughness: 0.5
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 2;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.y = 4;
+  group.add(head);
+
+  // Horns
+  const hornGeometry = new THREE.ConeGeometry(0.2, 1.2, 6);
+  const hornMaterial = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  const leftHorn = new THREE.Mesh(hornGeometry, hornMaterial);
+  leftHorn.position.set(-0.5, 4.8, 0);
+  leftHorn.rotation.z = 0.3;
+  group.add(leftHorn);
+  const rightHorn = new THREE.Mesh(hornGeometry, hornMaterial);
+  rightHorn.position.set(0.5, 4.8, 0);
+  rightHorn.rotation.z = -0.3;
+  group.add(rightHorn);
+
+  // Arms
+  const armGeometry = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+  const leftArm = new THREE.Mesh(armGeometry, bodyMaterial);
+  leftArm.position.set(-1.5, 2.5, 0);
+  leftArm.rotation.z = 0.5;
+  group.add(leftArm);
+  const rightArm = new THREE.Mesh(armGeometry, bodyMaterial);
+  rightArm.position.set(1.5, 2.5, 0);
+  rightArm.rotation.z = -0.5;
+  group.add(rightArm);
+
+  // Glowing eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.15, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.3, 4.1, 0.7);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.3, 4.1, 0.7);
+  group.add(rightEye);
+
+  game.glowMeshes.push({ mesh: body, color: color });
+  game.glowMeshes.push({ mesh: leftEye, color: 0xff0000 });
+  game.glowMeshes.push({ mesh: rightEye, color: 0xff0000 });
+}
+
+function createKnightMesh(group, color) {
+  // Body armor
+  const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.6, 1.5, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: color, 
+    roughness: 0.3,
+    metalness: 0.8
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 1.5;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head/Helmet
+  const headGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.y = 2.6;
+  group.add(head);
+
+  // Helmet visor
+  const visorGeometry = new THREE.BoxGeometry(0.5, 0.15, 0.3);
+  const visorMaterial = new THREE.MeshBasicMaterial({ color: 0x330000 });
+  const visor = new THREE.Mesh(visorGeometry, visorMaterial);
+  visor.position.set(0, 2.55, 0.3);
+  group.add(visor);
+
+  // Sword
+  const bladeGeometry = new THREE.BoxGeometry(0.1, 1.8, 0.05);
+  const bladeMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.9 });
+  const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
+  blade.position.set(0.8, 1.8, 0);
+  blade.rotation.z = -0.3;
+  group.add(blade);
+
+  // Shield
+  const shieldGeometry = new THREE.CircleGeometry(0.5, 8);
+  const shieldMaterial = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.7 });
+  const shield = new THREE.Mesh(shieldGeometry, shieldMaterial);
+  shield.position.set(-0.7, 1.5, 0.3);
+  group.add(shield);
+
+  game.glowMeshes.push({ mesh: body, color: color });
+}
+
+function createSpiderMesh(group, color) {
+  // Body
+  const bodyGeometry = new THREE.SphereGeometry(0.5, 8, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 0.6;
+  body.scale.set(1, 0.7, 1.3);
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.25, 8, 8);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.set(0, 0.5, 0.6);
+  group.add(head);
+
+  // Legs (8)
+  const legGeometry = new THREE.CylinderGeometry(0.03, 0.04, 0.8, 4);
+  for (let i = 0; i < 8; i++) {
+    const leg = new THREE.Mesh(legGeometry, bodyMaterial);
+    const side = i < 4 ? -1 : 1;
+    const index = i % 4;
+    leg.position.set(side * 0.4, 0.3, (index - 1.5) * 0.3);
+    leg.rotation.z = side * 1;
+    group.add(leg);
   }
 
-  return group;
+  // Red eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  for (let i = 0; i < 4; i++) {
+    const eye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    eye.position.set((i % 2 - 0.5) * 0.15, 0.55, 0.8);
+    group.add(eye);
+  }
+}
+
+function createHoundMesh(group, color) {
+  // Body
+  const bodyGeometry = new THREE.CapsuleGeometry(0.3, 0.8, 4, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.8 });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 0.7;
+  body.rotation.z = Math.PI / 2;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.25, 8, 8);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.set(0, 0.8, 0.7);
+  head.scale.set(1, 0.8, 1.2);
+  group.add(head);
+
+  // Snout
+  const snoutGeometry = new THREE.ConeGeometry(0.12, 0.3, 6);
+  const snout = new THREE.Mesh(snoutGeometry, bodyMaterial);
+  snout.position.set(0, 0.75, 1);
+  snout.rotation.x = Math.PI / 2;
+  group.add(snout);
+
+  // Ears
+  const earGeometry = new THREE.ConeGeometry(0.1, 0.25, 4);
+  const leftEar = new THREE.Mesh(earGeometry, bodyMaterial);
+  leftEar.position.set(-0.15, 1, 0.6);
+  group.add(leftEar);
+  const rightEar = new THREE.Mesh(earGeometry, bodyMaterial);
+  rightEar.position.set(0.15, 1, 0.6);
+  group.add(rightEar);
+
+  // Legs
+  const legGeometry = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 6);
+  const positions = [[-0.2, 0.25, 0.4], [0.2, 0.25, 0.4], [-0.2, 0.25, -0.4], [0.2, 0.25, -0.4]];
+  positions.forEach(pos => {
+    const leg = new THREE.Mesh(legGeometry, bodyMaterial);
+    leg.position.set(...pos);
+    group.add(leg);
+  });
+
+  // Eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xff3300 });
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.1, 0.85, 0.9);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.1, 0.85, 0.9);
+  group.add(rightEye);
+}
+
+function createBanditMesh(group, color) {
+  // Similar to player but darker
+  const bodyGeometry = new THREE.CylinderGeometry(0.35, 0.4, 1.2, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: color, roughness: 0.7 });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 1.4;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head with hood
+  const headGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+  const headMaterial = new THREE.MeshStandardMaterial({ color: 0xddbbaa });
+  const head = new THREE.Mesh(headGeometry, headMaterial);
+  head.position.y = 2.2;
+  group.add(head);
+
+  const hoodGeometry = new THREE.ConeGeometry(0.4, 0.5, 8);
+  const hoodMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+  const hood = new THREE.Mesh(hoodGeometry, hoodMaterial);
+  hood.position.y = 2.4;
+  group.add(hood);
+
+  // Dagger
+  const daggerGeometry = new THREE.ConeGeometry(0.05, 0.6, 4);
+  const daggerMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 });
+  const dagger = new THREE.Mesh(daggerGeometry, daggerMaterial);
+  dagger.position.set(0.5, 1.3, 0.3);
+  dagger.rotation.x = -Math.PI / 4;
+  group.add(dagger);
+}
+
+function createDefaultMonsterMesh(group, color) {
+  // Generic monster
+  const bodyGeometry = new THREE.CapsuleGeometry(0.4, 1, 4, 8);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ 
+    color: color,
+    roughness: 0.6
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.position.y = 1;
+  body.castShadow = true;
+  group.add(body);
+
+  // Head
+  const headGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+  const head = new THREE.Mesh(headGeometry, bodyMaterial);
+  head.position.y = 1.8;
+  group.add(head);
+
+  // Eyes
+  const eyeGeometry = new THREE.SphereGeometry(0.06, 8, 8);
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  leftEye.position.set(-0.12, 1.85, 0.25);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+  rightEye.position.set(0.12, 1.85, 0.25);
+  group.add(rightEye);
 }
 
 // Create text sprite
@@ -521,8 +1066,8 @@ function createHealthBar(isBoss = false) {
 // Initialize Scene
 function initScene() {
   game.scene = new THREE.Scene();
-  game.scene.background = new THREE.Color(0x0a0a15);
-  game.scene.fog = new THREE.FogExp2(0x0a0a15, 0.008);
+  game.scene.background = new THREE.Color(0x1a1a2e);
+  game.scene.fog = new THREE.FogExp2(0x1a1a2e, 0.004);
 
   game.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
   game.camera.position.set(0, game.cameraHeight, game.cameraDistance);
@@ -532,14 +1077,20 @@ function initScene() {
   game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   game.renderer.shadowMap.enabled = true;
   game.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  game.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  game.renderer.toneMappingExposure = 1.2;
   document.getElementById('game-container').appendChild(game.renderer.domElement);
 
-  // Dark ambient light
-  const ambientLight = new THREE.AmbientLight(0x222244, 0.5);
+  // Brighter ambient light
+  const ambientLight = new THREE.AmbientLight(0x6688cc, 0.8);
   game.scene.add(ambientLight);
 
-  // Moon light
-  const moonLight = new THREE.DirectionalLight(0x6666aa, 0.8);
+  // Hemisphere light for better outdoor feel
+  const hemiLight = new THREE.HemisphereLight(0x8899ff, 0x443322, 0.6);
+  game.scene.add(hemiLight);
+
+  // Main sun/moon light - much brighter
+  const moonLight = new THREE.DirectionalLight(0xffffff, 1.2);
   moonLight.position.set(-50, 100, -50);
   moonLight.castShadow = true;
   moonLight.shadow.mapSize.width = 2048;
@@ -552,21 +1103,33 @@ function initScene() {
   moonLight.shadow.camera.bottom = -150;
   game.scene.add(moonLight);
 
-  // Red accent light
-  const redLight = new THREE.PointLight(0xff0000, 0.5, 100);
-  redLight.position.set(0, 20, 0);
-  game.scene.add(redLight);
+  // Secondary fill light
+  const fillLight = new THREE.DirectionalLight(0x6688ff, 0.5);
+  fillLight.position.set(50, 50, 50);
+  game.scene.add(fillLight);
 
-  // Ground with dark texture
+  // Player spotlight - follows player
+  game.playerLight = new THREE.PointLight(0xffffcc, 1, 30);
+  game.playerLight.position.set(0, 10, 0);
+  game.scene.add(game.playerLight);
+
+  // Ground with better colors and grid pattern
   const groundGeometry = new THREE.PlaneGeometry(500, 500, 100, 100);
-  const groundMaterial = new THREE.MeshPhongMaterial({
-    color: 0x1a1a2a,
+  const groundMaterial = new THREE.MeshStandardMaterial({
+    color: 0x2d4a2d,
+    roughness: 0.9,
+    metalness: 0.1,
     side: THREE.DoubleSide
   });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   game.scene.add(ground);
+  
+  // Add grid lines for visibility
+  const gridHelper = new THREE.GridHelper(500, 100, 0x4a6a4a, 0x3a5a3a);
+  gridHelper.position.y = 0.01;
+  game.scene.add(gridHelper);
 
   // Add terrain height variation
   const vertices = groundGeometry.attributes.position.array;
@@ -633,21 +1196,45 @@ function initScene() {
 
 // Create dark tree
 function createDarkTree(x, z) {
+  const treeGroup = new THREE.Group();
+  
+  // Trunk with better color
   const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.2, 0.4, 4, 6),
-    new THREE.MeshPhongMaterial({ color: 0x1a1a1a })
+    new THREE.CylinderGeometry(0.25, 0.45, 5, 8),
+    new THREE.MeshStandardMaterial({ color: 0x4a3528, roughness: 0.9 })
   );
-  trunk.position.set(x, 2, z);
+  trunk.position.y = 2.5;
   trunk.castShadow = true;
-  game.scene.add(trunk);
+  treeGroup.add(trunk);
 
-  const leaves = new THREE.Mesh(
-    new THREE.ConeGeometry(2, 5, 6),
-    new THREE.MeshPhongMaterial({ color: 0x0a2a0a })
-  );
-  leaves.position.set(x, 6, z);
-  leaves.castShadow = true;
-  game.scene.add(leaves);
+  // Multiple layers of leaves for fuller look
+  const leavesMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x1a4a1a, 
+    roughness: 0.8 
+  });
+  
+  const leaves1 = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), leavesMaterial);
+  leaves1.position.y = 6;
+  leaves1.castShadow = true;
+  treeGroup.add(leaves1);
+  
+  const leaves2 = new THREE.Mesh(new THREE.ConeGeometry(2, 3, 8), leavesMaterial);
+  leaves2.position.y = 8;
+  leaves2.castShadow = true;
+  treeGroup.add(leaves2);
+  
+  const leaves3 = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2, 8), leavesMaterial);
+  leaves3.position.y = 9.5;
+  leaves3.castShadow = true;
+  treeGroup.add(leaves3);
+  
+  treeGroup.position.set(x, 0, z);
+  // Random rotation and scale variation
+  treeGroup.rotation.y = Math.random() * Math.PI * 2;
+  const scale = 0.7 + Math.random() * 0.6;
+  treeGroup.scale.setScalar(scale);
+  
+  game.scene.add(treeGroup);
 }
 
 // Create ruin
@@ -742,23 +1329,48 @@ function createTownBuilding(x, z, name) {
 
 // Create torch
 function createTorch(x, z) {
-  const torch = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.1, 0.15, 2, 6),
-    new THREE.MeshPhongMaterial({ color: 0x4a3a2a })
+  const torchGroup = new THREE.Group();
+  
+  // Post
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.12, 2.5, 6),
+    new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.9 })
   );
-  torch.position.set(x, 1, z);
-  game.scene.add(torch);
+  post.position.y = 1.25;
+  post.castShadow = true;
+  torchGroup.add(post);
 
-  const light = new THREE.PointLight(0xff6600, 0.5, 15);
-  light.position.set(x, 2.5, z);
-  game.scene.add(light);
-
-  const flame = new THREE.Mesh(
-    new THREE.ConeGeometry(0.2, 0.5, 6),
-    new THREE.MeshBasicMaterial({ color: 0xff4400 })
+  // Bowl/holder
+  const bowl = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.15, 0.3, 8),
+    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6 })
   );
-  flame.position.set(x, 2.25, z);
-  game.scene.add(flame);
+  bowl.position.y = 2.5;
+  torchGroup.add(bowl);
+
+  // Flame (multiple layers)
+  const flameMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+  const flame1 = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 6), flameMaterial);
+  flame1.position.y = 2.9;
+  torchGroup.add(flame1);
+  
+  const flame2 = new THREE.Mesh(
+    new THREE.ConeGeometry(0.1, 0.35, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+  );
+  flame2.position.y = 3;
+  torchGroup.add(flame2);
+
+  // Light - brighter and larger radius
+  const light = new THREE.PointLight(0xff8833, 1.5, 25);
+  light.position.y = 3;
+  torchGroup.add(light);
+
+  torchGroup.position.set(x, 0, z);
+  game.scene.add(torchGroup);
+  
+  // Add flame to glow meshes for animation
+  game.glowMeshes.push({ mesh: flame1, color: 0xff6600 });
 }
 
 // Particle effects
@@ -1778,6 +2390,11 @@ function gameLoop() {
 
     game.playerMesh.position.set(game.player.position.x, 0, game.player.position.z);
     game.playerMesh.rotation.y = game.player.rotation || 0;
+
+    // Update player light to follow player
+    if (game.playerLight) {
+      game.playerLight.position.set(game.player.position.x, 8, game.player.position.z);
+    }
 
     const cameraX = game.player.position.x + Math.sin(game.cameraAngle) * game.cameraDistance;
     const cameraZ = game.player.position.z + Math.cos(game.cameraAngle) * game.cameraDistance;
