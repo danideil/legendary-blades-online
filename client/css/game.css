@@ -1553,27 +1553,544 @@ body {
   background: #8b0000;
 }
 
-/* Responsive */
+/* ==================== MOBILE CONTROLS ==================== */
+#mobile-controls {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+#mobile-controls > * {
+  pointer-events: auto;
+}
+
+/* Joystick */
+#joystick-container {
+  position: absolute;
+  bottom: 30px;
+  left: 30px;
+  width: 120px;
+  height: 120px;
+}
+
+#joystick-base {
+  width: 120px;
+  height: 120px;
+  background: radial-gradient(circle, rgba(139, 0, 0, 0.4) 0%, rgba(74, 0, 0, 0.6) 100%);
+  border: 3px solid rgba(255, 215, 0, 0.5);
+  border-radius: 50%;
+  position: relative;
+}
+
+#joystick-stick {
+  width: 50px;
+  height: 50px;
+  background: radial-gradient(circle, #ffd700 0%, #b8860b 100%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+}
+
+/* Mobile Action Buttons */
+#mobile-action-buttons {
+  position: absolute;
+  bottom: 30px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-btn-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.mobile-action-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 3px solid #ffd700;
+  background: linear-gradient(180deg, rgba(139, 0, 0, 0.8) 0%, rgba(74, 0, 0, 0.9) 100%);
+  color: #ffd700;
+  font-size: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(139, 0, 0, 0.5);
+  transition: all 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.mobile-action-btn:active {
+  transform: scale(0.9);
+  box-shadow: 0 0 25px rgba(255, 215, 0, 0.8);
+  background: linear-gradient(180deg, rgba(180, 0, 0, 0.9) 0%, rgba(100, 0, 0, 0.95) 100%);
+}
+
+.mobile-action-btn.attack-btn {
+  width: 80px;
+  height: 80px;
+  font-size: 2rem;
+  border-color: #ff4444;
+  background: linear-gradient(180deg, rgba(180, 0, 0, 0.8) 0%, rgba(100, 0, 0, 0.9) 100%);
+}
+
+.mobile-action-btn.skill-btn {
+  width: 55px;
+  height: 55px;
+  font-size: 1.3rem;
+}
+
+.mobile-action-btn .btn-label {
+  position: absolute;
+  bottom: -18px;
+  font-size: 0.6rem;
+  color: #ffd700;
+  white-space: nowrap;
+}
+
+/* Mobile Skill Bar */
+#mobile-skill-bar {
+  position: absolute;
+  bottom: 140px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+}
+
+.mobile-skill-btn {
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  border: 2px solid #4a0000;
+  background: linear-gradient(180deg, rgba(30, 15, 15, 0.9) 0%, rgba(15, 8, 8, 0.95) 100%);
+  color: #ffd700;
+  font-size: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-skill-btn:active {
+  border-color: #ffd700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.mobile-skill-btn .skill-num {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 0.5rem;
+  color: #888;
+}
+
+.mobile-skill-btn.on-cooldown {
+  opacity: 0.5;
+}
+
+.mobile-skill-btn .cooldown-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #ff4444;
+}
+
+.mobile-skill-btn.on-cooldown .cooldown-overlay {
+  display: flex;
+}
+
+/* Mobile Potion Bar */
+#mobile-potion-bar {
+  position: absolute;
+  bottom: 200px;
+  right: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mobile-potion-btn {
+  width: 45px;
+  height: 45px;
+  border-radius: 8px;
+  border: 2px solid #4a0000;
+  background: linear-gradient(180deg, rgba(20, 10, 10, 0.9) 0%, rgba(10, 5, 5, 0.95) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-potion-btn:active {
+  border-color: #ffd700;
+}
+
+.mobile-potion-btn .potion-count {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 0.6rem;
+  color: #00ff00;
+}
+
+/* Mobile Menu Button */
+#mobile-menu-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 45px;
+  height: 45px;
+  border-radius: 8px;
+  border: 2px solid #4a0000;
+  background: linear-gradient(180deg, rgba(30, 15, 15, 0.9) 0%, rgba(15, 8, 8, 0.95) 100%);
+  color: #ffd700;
+  font-size: 1.5rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 101;
+}
+
+/* Mobile Quick Menu */
+#mobile-quick-menu {
+  position: absolute;
+  top: 70px;
+  right: 15px;
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 101;
+}
+
+#mobile-quick-menu.show {
+  display: flex;
+}
+
+.mobile-menu-item {
+  padding: 10px 15px;
+  background: linear-gradient(180deg, rgba(30, 15, 15, 0.95) 0%, rgba(15, 8, 8, 0.98) 100%);
+  border: 1px solid #4a0000;
+  border-radius: 5px;
+  color: #cd853f;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.mobile-menu-item:active {
+  border-color: #ffd700;
+  color: #ffd700;
+}
+
+/* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
-  .game-title {
-    font-size: 2.5rem;
+  /* Show mobile controls */
+  #mobile-controls {
+    display: block;
   }
   
-  .class-option {
-    width: 100px;
-    padding: 10px 5px;
+  #mobile-menu-btn {
+    display: flex;
+  }
+  
+  /* Hide desktop elements */
+  #skill-bar {
+    display: none;
+  }
+  
+  #menu-buttons {
+    display: none;
   }
   
   #chat-box {
-    width: 250px;
+    display: none;
   }
   
-  .panel {
-    min-width: 320px;
-    width: 95%;
+  #quest-tracker {
+    display: none;
   }
   
-  #skill-bar {
+  /* Adjust player info */
+  #player-info {
+    top: 10px;
+    left: 10px;
+    padding: 8px;
+    transform: scale(0.85);
+    transform-origin: top left;
+  }
+  
+  .player-portrait {
+    width: 45px;
+    height: 45px;
+  }
+  
+  .class-emblem {
+    font-size: 1.3rem;
+  }
+  
+  .player-details {
+    min-width: 140px;
+  }
+  
+  .player-name-display {
+    font-size: 0.85rem;
+  }
+  
+  .stat-bar {
+    height: 14px;
+  }
+  
+  .bar-text {
+    font-size: 0.55rem;
+  }
+  
+  /* Adjust currency */
+  #currency-display {
+    top: 75px;
+    left: 10px;
+    transform: scale(0.85);
+    transform-origin: top left;
+  }
+  
+  /* Adjust target info */
+  #target-info {
+    top: 10px;
+    left: 50%;
     transform: translateX(-50%) scale(0.85);
+    min-width: 160px;
+    padding: 6px 10px;
+  }
+  
+  /* Adjust minimap */
+  #minimap {
+    display: none;
+  }
+  
+  /* Stat points indicator */
+  #stat-points-indicator {
+    top: 105px;
+    left: 10px;
+    transform: scale(0.85);
+    transform-origin: top left;
+  }
+  
+  /* Combo display */
+  #combo-display {
+    top: 100px;
+  }
+  
+  #combo-count {
+    font-size: 2rem;
+  }
+  
+  .combo-text {
+    font-size: 0.9rem;
+  }
+  
+  /* Panels */
+  .panel {
+    min-width: 90vw;
+    max-width: 95vw;
+    max-height: 85vh;
+  }
+  
+  .panel-header {
+    padding: 10px 15px;
+  }
+  
+  .panel-header h2 {
+    font-size: 1rem;
+  }
+  
+  .panel-content {
+    padding: 10px;
+  }
+  
+  /* Inventory grid */
+  #inventory-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  
+  /* Login screen */
+  .login-container {
+    padding: 20px;
+    max-width: 95vw;
+  }
+  
+  .game-title {
+    font-size: 2rem;
+    letter-spacing: 4px;
+  }
+  
+  .game-subtitle {
+    font-size: 1rem;
+  }
+  
+  .class-options {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .class-option {
+    width: 80px;
+    padding: 10px 5px;
+  }
+  
+  .class-icon {
+    font-size: 1.5rem;
+  }
+  
+  .class-name {
+    font-size: 0.7rem;
+  }
+  
+  .class-desc {
+    font-size: 0.6rem;
+  }
+  
+  .class-stats {
+    font-size: 0.5rem;
+  }
+  
+  .play-btn {
+    padding: 12px 40px;
+    font-size: 1rem;
+  }
+  
+  .login-form input {
+    padding: 12px 15px;
+    font-size: 1rem;
+  }
+  
+  /* Notifications */
+  .notification {
+    padding: 20px 30px;
+    max-width: 90vw;
+  }
+  
+  .notification h2 {
+    font-size: 1.8rem;
+  }
+  
+  /* Death screen */
+  .death-content h1 {
+    font-size: 3rem;
+  }
+  
+  /* Item notifications */
+  #item-notifications {
+    bottom: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Extra small screens */
+  #joystick-container {
+    width: 100px;
+    height: 100px;
+    bottom: 20px;
+    left: 20px;
+  }
+  
+  #joystick-base {
+    width: 100px;
+    height: 100px;
+  }
+  
+  #joystick-stick {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .mobile-action-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 1.2rem;
+  }
+  
+  .mobile-action-btn.attack-btn {
+    width: 65px;
+    height: 65px;
+    font-size: 1.6rem;
+  }
+  
+  .mobile-skill-btn {
+    width: 42px;
+    height: 42px;
+    font-size: 1rem;
+  }
+  
+  .mobile-potion-btn {
+    width: 38px;
+    height: 38px;
+    font-size: 0.9rem;
+  }
+  
+  #mobile-skill-bar {
+    bottom: 120px;
+  }
+  
+  #mobile-potion-bar {
+    bottom: 170px;
+  }
+  
+  #player-info {
+    transform: scale(0.75);
+  }
+  
+  #currency-display {
+    transform: scale(0.75);
+    top: 70px;
+  }
+  
+  .game-title {
+    font-size: 1.6rem;
+  }
+  
+  .class-option {
+    width: 65px;
+    padding: 8px 3px;
+  }
+  
+  .class-icon {
+    font-size: 1.2rem;
+  }
+  
+  .class-name {
+    font-size: 0.6rem;
+  }
+  
+  .class-desc, .class-stats {
+    display: none;
   }
 }

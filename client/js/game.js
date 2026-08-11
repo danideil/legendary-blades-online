@@ -952,6 +952,171 @@ function setupInput() {
     document.querySelectorAll('.job-option').forEach(o => o.classList.remove('selected'));
     game.socket.emit('setJob', { job: null });
   });
+
+  // Mobile controls setup
+  setupMobileControls();
+}
+
+// Mobile Controls
+function setupMobileControls() {
+  const isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  
+  if (!isMobile) return;
+  
+  const joystickContainer = document.getElementById('joystick-container');
+  const joystickStick = document.getElementById('joystick-stick');
+  const joystickBase = document.getElementById('joystick-base');
+  
+  if (!joystickContainer) return;
+  
+  let joystickActive = false;
+  let joystickOrigin = { x: 0, y: 0 };
+  const maxDistance = 40;
+  
+  // Joystick touch handling
+  joystickBase.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    joystickActive = true;
+    const touch = e.touches[0];
+    const rect = joystickBase.getBoundingClientRect();
+    joystickOrigin = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2
+    };
+  }, { passive: false });
+  
+  document.addEventListener('touchmove', (e) => {
+    if (!joystickActive) return;
+    
+    const touch = e.touches[0];
+    let dx = touch.clientX - joystickOrigin.x;
+    let dy = touch.clientY - joystickOrigin.y;
+    
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance > maxDistance) {
+      dx = (dx / distance) * maxDistance;
+      dy = (dy / distance) * maxDistance;
+    }
+    
+    joystickStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    
+    // Set movement keys based on joystick position
+    const threshold = 10;
+    game.keys['KeyW'] = dy < -threshold;
+    game.keys['KeyS'] = dy > threshold;
+    game.keys['KeyA'] = dx < -threshold;
+    game.keys['KeyD'] = dx > threshold;
+  }, { passive: false });
+  
+  document.addEventListener('touchend', (e) => {
+    if (joystickActive) {
+      joystickActive = false;
+      joystickStick.style.transform = 'translate(-50%, -50%)';
+      game.keys['KeyW'] = false;
+      game.keys['KeyS'] = false;
+      game.keys['KeyA'] = false;
+      game.keys['KeyD'] = false;
+    }
+  });
+  
+  // Mobile attack button
+  const attackBtn = document.getElementById('mobile-attack-btn');
+  if (attackBtn) {
+    attackBtn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (game.selectedTarget) {
+        attackTarget();
+      } else {
+        // Auto-target nearest enemy
+        let nearestNPC = null;
+        let nearestDist = Infinity;
+        game.npcs.forEach(npc => {
+          if (!npc.dead && npc.mesh) {
+            const dist = game.playerMesh.position.distanceTo(npc.mesh.position);
+            if (dist < nearestDist && dist < 15) {
+              nearestDist = dist;
+              nearestNPC = npc;
+            }
+          }
+        });
+        if (nearestNPC) {
+          selectTarget(nearestNPC);
+          attackTarget();
+        }
+      }
+    }, { passive: false });
+  }
+  
+  // Mobile skill buttons
+  document.querySelectorAll('.mobile-skill-btn').forEach(btn => {
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const skillIndex = parseInt(btn.dataset.skill);
+      useSkill(skillIndex);
+    }, { passive: false });
+  });
+  
+  // Mobile potion buttons
+  document.querySelectorAll('.mobile-potion-btn').forEach(btn => {
+    btn.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const potionType = btn.dataset.potion;
+      if (potionType === 'hp') {
+        useItem('Small Heal Potion');
+      } else if (potionType === 'mp') {
+        useItem('Small Mana Potion');
+      }
+    }, { passive: false });
+  });
+  
+  // Mobile menu button
+  const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+  const mobileQuickMenu = document.getElementById('mobile-quick-menu');
+  
+  if (mobileMenuBtn && mobileQuickMenu) {
+    mobileMenuBtn.addEventListener('click', () => {
+      mobileQuickMenu.classList.toggle('show');
+    });
+    
+    document.querySelectorAll('.mobile-menu-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const panelId = item.dataset.panel;
+        togglePanel(panelId);
+        mobileQuickMenu.classList.remove('show');
+      });
+    });
+  }
+  
+  // Touch to select target
+  document.getElementById('game-container')?.addEventListener('touchstart', (e) => {
+    if (e.target.closest('#mobile-controls') || e.target.closest('#hud')) return;
+    
+    const touch = e.touches[0];
+    game.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+    game.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+    
+    game.raycaster.setFromCamera(game.mouse, game.camera);
+    
+    const clickables = [];
+    game.npcs.forEach(npc => {
+      if (npc.mesh && !npc.dead) clickables.push(npc.mesh);
+    });
+    
+    const intersects = game.raycaster.intersectObjects(clickables, true);
+    if (intersects.length > 0) {
+      let targetMesh = intersects[0].object;
+      while (targetMesh.parent && !targetMesh.userData.npcId) {
+        targetMesh = targetMesh.parent;
+      }
+      
+      if (targetMesh.userData.npcId) {
+        const npc = game.npcs.get(targetMesh.userData.npcId);
+        if (npc) {
+          selectTarget(npc);
+        }
+      }
+    }
+  }, { passive: true });
 }
 
 // Handle click
@@ -1138,6 +1303,18 @@ function updateSkillBar() {
       slot.title = `${skill.name}\nDamage: ${skill.damage}\nMana: ${skill.mana}\nCooldown: ${skill.cooldown / 1000}s`;
     }
   });
+  
+  // Update mobile skill buttons
+  const mobileSkillBtns = document.querySelectorAll('.mobile-skill-btn');
+  mobileSkillBtns.forEach((btn, i) => {
+    const skillName = skillNames[i];
+    if (skillName && skills[skillName]) {
+      const iconSpan = btn.querySelector('.skill-icon');
+      if (iconSpan) {
+        iconSpan.textContent = icons[skillName] || '⚡';
+      }
+    }
+  });
 }
 
 function updateSkillBarItems() {
@@ -1159,6 +1336,16 @@ function updateSkillBarItems() {
     const count = potions[itemName] || 0;
     slot.querySelector('.item-count').textContent = count;
   });
+  
+  // Update mobile potion buttons
+  const hpCount = potions['Small Heal Potion'] + potions['Heal Potion'];
+  const mpCount = potions['Small Mana Potion'] + potions['Mana Potion'];
+  
+  const mobileHpBtn = document.querySelector('.mobile-potion-btn[data-potion="hp"] .potion-count');
+  const mobileMpBtn = document.querySelector('.mobile-potion-btn[data-potion="mp"] .potion-count');
+  
+  if (mobileHpBtn) mobileHpBtn.textContent = hpCount;
+  if (mobileMpBtn) mobileMpBtn.textContent = mpCount;
 }
 
 function updateCharacterUI() {
