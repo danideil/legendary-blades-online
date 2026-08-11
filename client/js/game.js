@@ -1066,8 +1066,8 @@ function createHealthBar(isBoss = false) {
 // Initialize Scene
 function initScene() {
   game.scene = new THREE.Scene();
-  game.scene.background = new THREE.Color(0x1a1a2e);
-  game.scene.fog = new THREE.FogExp2(0x1a1a2e, 0.004);
+  game.scene.background = new THREE.Color(0x87CEEB); // Sky blue background
+  game.scene.fog = new THREE.Fog(0x87CEEB, 100, 400);
 
   game.camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
   game.camera.position.set(0, game.cameraHeight, game.cameraDistance);
@@ -1077,48 +1077,44 @@ function initScene() {
   game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   game.renderer.shadowMap.enabled = true;
   game.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  game.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  game.renderer.toneMappingExposure = 1.2;
   document.getElementById('game-container').appendChild(game.renderer.domElement);
 
-  // Brighter ambient light
-  const ambientLight = new THREE.AmbientLight(0x6688cc, 0.8);
+  // Very bright ambient light
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
   game.scene.add(ambientLight);
 
-  // Hemisphere light for better outdoor feel
-  const hemiLight = new THREE.HemisphereLight(0x8899ff, 0x443322, 0.6);
+  // Hemisphere light - sky and ground colors
+  const hemiLight = new THREE.HemisphereLight(0xffffbb, 0x88aa55, 1.2);
   game.scene.add(hemiLight);
 
-  // Main sun/moon light - much brighter
-  const moonLight = new THREE.DirectionalLight(0xffffff, 1.2);
-  moonLight.position.set(-50, 100, -50);
-  moonLight.castShadow = true;
-  moonLight.shadow.mapSize.width = 2048;
-  moonLight.shadow.mapSize.height = 2048;
-  moonLight.shadow.camera.near = 0.5;
-  moonLight.shadow.camera.far = 300;
-  moonLight.shadow.camera.left = -150;
-  moonLight.shadow.camera.right = 150;
-  moonLight.shadow.camera.top = 150;
-  moonLight.shadow.camera.bottom = -150;
-  game.scene.add(moonLight);
+  // Main sunlight - very bright
+  const sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
+  sunLight.position.set(50, 100, 50);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.width = 2048;
+  sunLight.shadow.mapSize.height = 2048;
+  sunLight.shadow.camera.near = 0.5;
+  sunLight.shadow.camera.far = 300;
+  sunLight.shadow.camera.left = -100;
+  sunLight.shadow.camera.right = 100;
+  sunLight.shadow.camera.top = 100;
+  sunLight.shadow.camera.bottom = -100;
+  game.scene.add(sunLight);
 
-  // Secondary fill light
-  const fillLight = new THREE.DirectionalLight(0x6688ff, 0.5);
-  fillLight.position.set(50, 50, 50);
+  // Secondary fill light from opposite direction
+  const fillLight = new THREE.DirectionalLight(0xaaccff, 1.0);
+  fillLight.position.set(-50, 50, -50);
   game.scene.add(fillLight);
 
-  // Player spotlight - follows player
-  game.playerLight = new THREE.PointLight(0xffffcc, 1, 30);
-  game.playerLight.position.set(0, 10, 0);
+  // Player spotlight - very bright, follows player
+  game.playerLight = new THREE.PointLight(0xffffff, 2, 50);
+  game.playerLight.position.set(0, 15, 0);
   game.scene.add(game.playerLight);
 
-  // Ground with better colors and grid pattern
-  const groundGeometry = new THREE.PlaneGeometry(500, 500, 100, 100);
-  const groundMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2d4a2d,
-    roughness: 0.9,
-    metalness: 0.1,
+  // Bright green grass ground
+  const groundGeometry = new THREE.PlaneGeometry(500, 500, 50, 50);
+  const groundMaterial = new THREE.MeshLambertMaterial({
+    color: 0x4a8c4a,
     side: THREE.DoubleSide
   });
   const ground = new THREE.Mesh(groundGeometry, groundMaterial);
@@ -1126,9 +1122,9 @@ function initScene() {
   ground.receiveShadow = true;
   game.scene.add(ground);
   
-  // Add grid lines for visibility
-  const gridHelper = new THREE.GridHelper(500, 100, 0x4a6a4a, 0x3a5a3a);
-  gridHelper.position.y = 0.01;
+  // Grid lines for visibility
+  const gridHelper = new THREE.GridHelper(500, 50, 0x3a7a3a, 0x5aaa5a);
+  gridHelper.position.y = 0.05;
   game.scene.add(gridHelper);
 
   // Add terrain height variation
@@ -1165,73 +1161,64 @@ function initScene() {
     createTorch(Math.cos(angle) * radius, Math.sin(angle) * radius);
   }
 
-  // Skybox - distant dark mountains
-  const mountainGeometry = new THREE.ConeGeometry(30, 100, 4);
-  const mountainMaterial = new THREE.MeshPhongMaterial({ color: 0x111122 });
+  // Distant mountains with nice colors
+  const mountainGeometry = new THREE.ConeGeometry(40, 80, 4);
+  const mountainMaterial = new THREE.MeshLambertMaterial({ color: 0x6688aa });
   for (let i = 0; i < 12; i++) {
     const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
     const angle = (i / 12) * Math.PI * 2;
-    mountain.position.set(Math.cos(angle) * 220, 30, Math.sin(angle) * 220);
+    mountain.position.set(Math.cos(angle) * 220, 20, Math.sin(angle) * 220);
     mountain.rotation.y = Math.random() * Math.PI;
     game.scene.add(mountain);
   }
 
-  // Stars
-  const starsGeometry = new THREE.BufferGeometry();
-  const starPositions = [];
-  for (let i = 0; i < 1000; i++) {
-    starPositions.push(
-      (Math.random() - 0.5) * 500,
-      Math.random() * 100 + 50,
-      (Math.random() - 0.5) * 500
+  // Clouds instead of stars
+  const cloudGeometry = new THREE.SphereGeometry(8, 8, 8);
+  const cloudMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+  for (let i = 0; i < 20; i++) {
+    const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+    cloud.position.set(
+      (Math.random() - 0.5) * 400,
+      50 + Math.random() * 30,
+      (Math.random() - 0.5) * 400
     );
+    cloud.scale.set(1 + Math.random(), 0.5, 1 + Math.random());
+    game.scene.add(cloud);
   }
-  starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-  const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
-  const stars = new THREE.Points(starsGeometry, starsMaterial);
-  game.scene.add(stars);
 
   game.minimapCtx = document.getElementById('minimap-canvas').getContext('2d');
 }
 
-// Create dark tree
+// Create tree
 function createDarkTree(x, z) {
   const treeGroup = new THREE.Group();
   
-  // Trunk with better color
+  // Brown trunk
   const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.25, 0.45, 5, 8),
-    new THREE.MeshStandardMaterial({ color: 0x4a3528, roughness: 0.9 })
+    new THREE.CylinderGeometry(0.3, 0.5, 5, 8),
+    new THREE.MeshLambertMaterial({ color: 0x8B4513 })
   );
   trunk.position.y = 2.5;
   trunk.castShadow = true;
   treeGroup.add(trunk);
 
-  // Multiple layers of leaves for fuller look
-  const leavesMaterial = new THREE.MeshStandardMaterial({ 
-    color: 0x1a4a1a, 
-    roughness: 0.8 
-  });
+  // Bright green leaves
+  const leavesMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
   
-  const leaves1 = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), leavesMaterial);
-  leaves1.position.y = 6;
+  const leaves1 = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 8), leavesMaterial);
+  leaves1.position.y = 7;
+  leaves1.scale.set(1, 0.8, 1);
   leaves1.castShadow = true;
   treeGroup.add(leaves1);
   
-  const leaves2 = new THREE.Mesh(new THREE.ConeGeometry(2, 3, 8), leavesMaterial);
-  leaves2.position.y = 8;
+  const leaves2 = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), leavesMaterial);
+  leaves2.position.y = 9;
   leaves2.castShadow = true;
   treeGroup.add(leaves2);
   
-  const leaves3 = new THREE.Mesh(new THREE.ConeGeometry(1.2, 2, 8), leavesMaterial);
-  leaves3.position.y = 9.5;
-  leaves3.castShadow = true;
-  treeGroup.add(leaves3);
-  
   treeGroup.position.set(x, 0, z);
-  // Random rotation and scale variation
   treeGroup.rotation.y = Math.random() * Math.PI * 2;
-  const scale = 0.7 + Math.random() * 0.6;
+  const scale = 0.7 + Math.random() * 0.5;
   treeGroup.scale.setScalar(scale);
   
   game.scene.add(treeGroup);
@@ -1240,7 +1227,7 @@ function createDarkTree(x, z) {
 // Create ruin
 function createRuin(x, z) {
   const pillarGeometry = new THREE.CylinderGeometry(0.8, 1, 8, 8);
-  const pillarMaterial = new THREE.MeshPhongMaterial({ color: 0x2a2a3a });
+  const pillarMaterial = new THREE.MeshLambertMaterial({ color: 0x888888 });
 
   for (let i = 0; i < 4; i++) {
     const pillar = new THREE.Mesh(pillarGeometry, pillarMaterial);
@@ -1257,11 +1244,7 @@ function createPortal(x, z, name) {
   const portalGroup = new THREE.Group();
 
   const ringGeometry = new THREE.TorusGeometry(3, 0.5, 8, 32);
-  const ringMaterial = new THREE.MeshPhongMaterial({
-    color: 0x8800ff,
-    emissive: 0x4400aa,
-    emissiveIntensity: 0.5
-  });
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xaa44ff });
   const ring = new THREE.Mesh(ringGeometry, ringMaterial);
   ring.rotation.x = Math.PI / 2;
   ring.position.y = 3;
@@ -1269,9 +1252,9 @@ function createPortal(x, z, name) {
 
   const innerGeometry = new THREE.CircleGeometry(2.5, 32);
   const innerMaterial = new THREE.MeshBasicMaterial({
-    color: 0x6600cc,
+    color: 0x8866ff,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.7,
     side: THREE.DoubleSide
   });
   const inner = new THREE.Mesh(innerGeometry, innerMaterial);
@@ -1279,7 +1262,12 @@ function createPortal(x, z, name) {
   inner.position.y = 3;
   portalGroup.add(inner);
 
-  const nameSprite = createTextSprite(name, '#ff66ff');
+  // Portal light
+  const portalLight = new THREE.PointLight(0xaa44ff, 2, 20);
+  portalLight.position.y = 3;
+  portalGroup.add(portalLight);
+
+  const nameSprite = createTextSprite(name, '#ff88ff');
   nameSprite.position.y = 7;
   nameSprite.scale.set(5, 1.5, 1);
   portalGroup.add(nameSprite);
@@ -1287,7 +1275,7 @@ function createPortal(x, z, name) {
   portalGroup.position.set(x, 0, z);
   game.scene.add(portalGroup);
 
-  game.glowMeshes.push({ mesh: ring, color: 0x8800ff });
+  game.glowMeshes.push({ mesh: ring, color: 0xaa44ff });
 }
 
 // Create town building
@@ -1296,7 +1284,7 @@ function createTownBuilding(x, z, name) {
 
   const base = new THREE.Mesh(
     new THREE.BoxGeometry(12, 6, 10),
-    new THREE.MeshPhongMaterial({ color: 0x3a2a2a })
+    new THREE.MeshLambertMaterial({ color: 0xDEB887 })
   );
   base.position.y = 3;
   base.castShadow = true;
@@ -1304,7 +1292,7 @@ function createTownBuilding(x, z, name) {
 
   const roof = new THREE.Mesh(
     new THREE.ConeGeometry(9, 4, 4),
-    new THREE.MeshPhongMaterial({ color: 0x4a0000 })
+    new THREE.MeshLambertMaterial({ color: 0x8B0000 })
   );
   roof.position.y = 8;
   roof.rotation.y = Math.PI / 4;
@@ -1313,12 +1301,12 @@ function createTownBuilding(x, z, name) {
 
   const door = new THREE.Mesh(
     new THREE.BoxGeometry(2, 3.5, 0.2),
-    new THREE.MeshPhongMaterial({ color: 0x2a1a1a })
+    new THREE.MeshLambertMaterial({ color: 0x4a3020 })
   );
   door.position.set(0, 1.75, 5.1);
   building.add(door);
 
-  const nameSprite = createTextSprite(name, '#ffd700');
+  const nameSprite = createTextSprite(name, '#ffff00');
   nameSprite.position.y = 11;
   nameSprite.scale.set(6, 1.5, 1);
   building.add(nameSprite);
