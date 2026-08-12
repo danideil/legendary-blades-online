@@ -474,6 +474,15 @@ function handleCombat(attacker, defender, skillName = null) {
   let manaCost = 0;
   let skill = null;
 
+  // Basic attack (no skill): free, 1 second cooldown, uses base stat damage
+  if (!skillName && attacker.skillCooldowns) {
+    const now = Date.now();
+    if (now - (attacker.skillCooldowns.__basic || 0) < 1000) {
+      return { error: 'Attack on cooldown' };
+    }
+    attacker.skillCooldowns.__basic = now;
+  }
+
   if (skillName && attacker.skills && attacker.skills[skillName]) {
     skill = attacker.skills[skillName];
     baseDamage = skill.damage;

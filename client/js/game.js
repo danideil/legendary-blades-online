@@ -552,11 +552,153 @@ function isBlocked(x, z) {
   return false;
 }
 
-// tile hash for grass variation
-function tileHash(tx, tz) {
-  let h = tx * 374761393 + tz * 668265263;
-  h = (h ^ (h >> 13)) * 1274126177;
-  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+// ============================================================
+// SMOOTH TERRAIN - value-noise based, pre-rendered once
+// Multiple grass biomes blending smoothly, no visible tiles
+// ============================================================
+const TERRAIN_RES = 2; // pixels per world unit on the terrain texture
+
+function nhash(ix, iz) {
+  let h = (ix * 374761393 + iz * 668265263) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function vnoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+  const a = nhash(ix, iz), b = nhash(ix + 1, iz);
+  const c = nhash(ix, iz + 1), d = nhash(ix + 1, iz + 1);
+  return a + (b - a) * sx + (c - a) * sz + (a - b - c + d) * sx * sz;
+}
+
+function fbm(x, z) {
+  return vnoise(x, z) * 0.55 + vnoise(x * 2.1 + 17, z * 2.1 + 17) * 0.28 + vnoise(x * 4.3 + 43, z * 4.3 + 43) * 0.17;
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function lerpColor(c1, c2, t) {
+  return [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
+}
+
+// grass biome gradient stops (dark forest -> lush -> meadow -> dry savanna)
+const BIOME_STOPS = [
+  [36, 96, 44],    // dark forest green
+  [56, 132, 58],   // lush green
+  [96, 148, 62],   // bright meadow
+  [132, 144, 70]   // dry yellowish grass
+];
+
+function biomeColor(n) {
+  const t = Math.max(0, Math.min(0.999, n)) * (BIOME_STOPS.length - 1);
+  const i = Math.floor(t);
+  return lerpColor(BIOME_STOPS[i], BIOME_STOPS[i + 1], t - i);
+}
+
+// distance from point to line segment (for dirt roads)
+function segDist(px, pz, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const len2 = dx * dx + dz * dz;
+  let t = ((px - ax) * dx + (pz - az) * dz) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + dx * t), pz - (az + dz * t));
+}
+
+function buildTerrain() {
+  const size = 500 * TERRAIN_RES;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const tctx = canvas.getContext('2d');
+  const img = tctx.createImageData(size, size);
+  const data = img.data;
+
+  // roads from town toward the portals
+  const roads = [
+    [0, 0, 0, 200],    // to Kundun Lair
+    [0, 0, 150, 0]     // to Death Knight Arena
+  ];
+
+  for (let pyi = 0; pyi < size; pyi++) {
+    const wz = pyi / TERRAIN_RES - 250;
+    for (let pxi = 0; pxi < size; pxi++) {
+      const wx = pxi / TERRAIN_RES - 250;
+      let r, g, b;
+
+      // nearest lake
+      let lakeD = Infinity, lakeR = 1;
+      for (let li = 0; li < lakes.length; li++) {
+        const l = lakes[li];
+        const d = Math.hypot(wx - l.x, wz - l.z);
+        if (d - l.r < lakeD - lakeR) { lakeD = d; lakeR = l.r; }
+      }
+      const shore = lakeD - lakeR; // negative = inside water
+
+      if (shore < 0) {
+        // water: deeper toward center, ripple noise
+        const depth = Math.min(1, -shore / lakeR);
+        const ripple = (fbm(wx * 0.15, wz * 0.15) - 0.5) * 18;
+        const wc = lerpColor([66, 132, 205], [26, 74, 150], depth);
+        r = wc[0] + ripple; g = wc[1] + ripple; b = wc[2] + ripple * 0.6;
+      } else {
+        // base grass with smooth biome blending
+        const n1 = fbm(wx * 0.012, wz * 0.012);            // biome selector (large scale)
+        const n2 = fbm(wx * 0.05 + 37, wz * 0.05 + 37);    // medium patches
+        const n3 = vnoise(wx * 0.3 + 91, wz * 0.3 + 91);   // fine detail
+        let gc = biomeColor(n1);
+        const shade = (n2 - 0.5) * 26 + (n3 - 0.5) * 12;
+        r = gc[0] + shade; g = gc[1] + shade; b = gc[2] + shade * 0.7;
+
+        // sandy shoreline blending into grass
+        if (shore < 2) {
+          const sand = [214, 196, 146];
+          r = sand[0]; g = sand[1]; b = sand[2];
+        } else if (shore < 7) {
+          const t = (shore - 2) / 5;
+          const sand = [214, 196, 146];
+          r = lerp(sand[0], r, t); g = lerp(sand[1], g, t); b = lerp(sand[2], b, t);
+        }
+
+        // town dirt area with smooth edge
+        const dTown = Math.hypot(wx, wz);
+        let dirtT = 0;
+        if (dTown < 28) dirtT = 1;
+        else if (dTown < 42) dirtT = 1 - (dTown - 28) / 14;
+
+        // dirt roads
+        for (let ri = 0; ri < roads.length; ri++) {
+          const rd = roads[ri];
+          const d = segDist(wx, wz, rd[0], rd[1], rd[2], rd[3]);
+          let rt = 0;
+          if (d < 3) rt = 1;
+          else if (d < 7) rt = 1 - (d - 3) / 4;
+          if (rt > dirtT) dirtT = rt;
+        }
+
+        if (dirtT > 0) {
+          const dn = (fbm(wx * 0.08 + 71, wz * 0.08 + 71) - 0.5) * 24;
+          const dirt = [154 + dn, 126 + dn, 90 + dn * 0.7];
+          // soften: dirt fades smoothly into grass
+          dirtT = dirtT * dirtT * (3 - 2 * dirtT);
+          r = lerp(r, dirt[0], dirtT);
+          g = lerp(g, dirt[1], dirtT);
+          b = lerp(b, dirt[2], dirtT);
+        }
+      }
+
+      const idx = (pyi * size + pxi) * 4;
+      data[idx] = Math.max(0, Math.min(255, r));
+      data[idx + 1] = Math.max(0, Math.min(255, g));
+      data[idx + 2] = Math.max(0, Math.min(255, b));
+      data[idx + 3] = 255;
+    }
+  }
+
+  tctx.putImageData(img, 0, 0);
+  game.terrainCanvas = canvas;
 }
 
 // ============================================================
@@ -809,6 +951,7 @@ function initScene() {
 
   resizeCanvas();
   buildWorld();
+  buildTerrain();
 
   game.minimapCtx = document.getElementById('minimap-canvas')?.getContext('2d');
 }
@@ -837,76 +980,55 @@ function screenToWorld(sx, sy) {
   };
 }
 
-const TILE = 4; // world units per tile
-
 function drawTerrain(ctx) {
   const cam = game.player.position;
   const halfW = game.canvas.width / 2 / game.zoom;
   const halfH = game.canvas.height / 2 / game.zoom;
 
-  const minTx = Math.floor((cam.x - halfW) / TILE) - 1;
-  const maxTx = Math.floor((cam.x + halfW) / TILE) + 1;
-  const minTz = Math.floor((cam.z - halfH) / TILE) - 1;
-  const maxTz = Math.floor((cam.z + halfH) / TILE) + 1;
+  // area outside the world - dark
+  ctx.fillStyle = '#1c3020';
+  ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
 
-  const tilePx = TILE * game.zoom;
+  if (!game.terrainCanvas) return;
 
-  for (let tx = minTx; tx <= maxTx; tx++) {
-    for (let tz = minTz; tz <= maxTz; tz++) {
-      const wx = tx * TILE + TILE / 2;
-      const wz = tz * TILE + TILE / 2;
-      const s = worldToScreen(tx * TILE, tz * TILE);
+  const viewL = cam.x - halfW, viewT = cam.z - halfH;
+  const wl = Math.max(-250, viewL), wr = Math.min(250, cam.x + halfW);
+  const wt = Math.max(-250, viewT), wb = Math.min(250, cam.z + halfH);
 
-      if (Math.abs(wx) > 248 || Math.abs(wz) > 248) {
-        // out of world - dark
-        ctx.fillStyle = '#1a2a1a';
-        ctx.fillRect(s.x, s.y, tilePx + 1, tilePx + 1);
-        continue;
-      }
-
-      if (isWater(wx, wz)) {
-        // animated water
-        const wave = Math.sin(game.time * 2 + tx * 1.7 + tz * 2.3) * 0.5 + 0.5;
-        ctx.fillStyle = wave > 0.6 ? '#3a6ac8' : '#2a56b0';
-        ctx.fillRect(s.x, s.y, tilePx + 1, tilePx + 1);
-        if (wave > 0.85) {
-          ctx.fillStyle = '#5a8ae0';
-          ctx.fillRect(s.x + tilePx * 0.2, s.y + tilePx * 0.4, tilePx * 0.3, tilePx * 0.1);
-        }
-        continue;
-      }
-
-      // town dirt area
-      const distTown = Math.hypot(wx, wz);
-      const h = tileHash(tx, tz);
-      if (distTown < 36) {
-        ctx.fillStyle = h > 0.5 ? '#b09468' : '#a48a5e';
-      } else {
-        // grass variants
-        if (h > 0.85) ctx.fillStyle = '#4a9a4a';
-        else if (h > 0.4) ctx.fillStyle = '#42883e';
-        else ctx.fillStyle = '#3c7c3a';
-      }
-      ctx.fillRect(s.x, s.y, tilePx + 1, tilePx + 1);
-
-      // grass detail specks
-      if (h > 0.7 && distTown >= 36) {
-        ctx.fillStyle = '#2e6a2e';
-        ctx.fillRect(s.x + tilePx * (h % 0.3) * 3, s.y + tilePx * 0.3, 3, 3);
-      }
-    }
+  if (wr > wl && wb > wt) {
+    const R = TERRAIN_RES;
+    // smooth upscaling for natural look (sprites stay pixelated)
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(
+      game.terrainCanvas,
+      (wl + 250) * R, (wt + 250) * R, (wr - wl) * R, (wb - wt) * R,
+      (wl - viewL) * game.zoom, (wt - viewT) * game.zoom,
+      (wr - wl) * game.zoom, (wb - wt) * game.zoom
+    );
+    ctx.imageSmoothingEnabled = false;
   }
 
-  // water edges (shoreline)
+  // animated water highlights on visible lakes
   lakes.forEach(l => {
     const s = worldToScreen(l.x, l.z);
     const rp = l.r * game.zoom;
     if (s.x + rp < 0 || s.x - rp > game.canvas.width || s.y + rp < 0 || s.y - rp > game.canvas.height) return;
-    ctx.strokeStyle = '#d8c890';
-    ctx.lineWidth = 3;
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(s.x, s.y, rp, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(s.x, s.y, rp * 0.97, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalAlpha = 0.16;
+    ctx.strokeStyle = '#d8ecff';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const ang = i * 1.05 + game.time * 0.4;
+      const rr = rp * (0.18 + 0.13 * i + Math.sin(game.time * 1.6 + i * 1.3) * 0.05);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, rr, ang, ang + 1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   });
 }
 
@@ -1402,6 +1524,7 @@ function setupInput() {
       return;
     }
 
+    if (e.code === 'Space') { e.preventDefault(); useBasicAttack(); }
     if (e.code === 'Digit1') useSkill(0);
     if (e.code === 'Digit2') useSkill(1);
     if (e.code === 'Digit3') useSkill(2);
@@ -1474,9 +1597,11 @@ function setupInput() {
     });
   });
 
-  document.querySelectorAll('.skill-slot:not(.item-slot)').forEach((slot, index) => {
+  document.querySelectorAll('.skill-slot:not(.item-slot):not(.basic-slot)').forEach((slot, index) => {
     slot.addEventListener('click', () => useSkill(index));
   });
+
+  document.querySelector('.skill-slot.basic-slot')?.addEventListener('click', () => useBasicAttack());
 
   document.querySelectorAll('.skill-slot.item-slot').forEach(slot => {
     slot.addEventListener('click', () => useItem(slot.dataset.item));
@@ -1523,7 +1648,12 @@ function handleClick(sx, sy) {
   game.players.forEach(p => testEntity(p, 'player'));
 
   if (best) {
-    selectTarget({ type: best.type, id: best.ent.id });
+    // Clicking an already-selected target performs a basic attack
+    if (game.selectedTarget && game.selectedTarget.id === best.ent.id) {
+      useBasicAttack();
+    } else {
+      selectTarget({ type: best.type, id: best.ent.id });
+    }
   }
 }
 
@@ -1591,7 +1721,7 @@ function setupMobileControls() {
     attackBtn.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (game.selectedTarget && !game.selectedTarget.dead) {
-        useSkill(0);
+        useBasicAttack();
       } else {
         let nearestNPC = null;
         let nearestDist = Infinity;
@@ -1609,7 +1739,7 @@ function setupMobileControls() {
         });
         if (nearestNPC) {
           selectTarget({ type: 'npc', id: nearestNPC.id });
-          useSkill(0);
+          useBasicAttack();
         }
       }
     }, { passive: false });
@@ -1734,6 +1864,31 @@ function useSkill(index) {
   });
 }
 
+// Basic attack: free, no mana, 1 second cooldown, available to all classes
+let lastBasicAttack = 0;
+function useBasicAttack() {
+  if (!game.selectedTarget || game.selectedTarget.dead) return;
+
+  const now = Date.now();
+  if (now - lastBasicAttack < 1000) return;
+  lastBasicAttack = now;
+
+  game.socket.emit('attack', {
+    targetType: game.selectedTarget.targetType,
+    targetId: game.selectedTarget.id,
+    skill: null
+  });
+
+  // cooldown indicator on the basic attack slot
+  const slot = document.querySelector('.skill-slot.basic-slot');
+  if (slot) {
+    slot.classList.add('on-cooldown');
+    const cd = slot.querySelector('.skill-cooldown');
+    if (cd) cd.textContent = '1';
+    setTimeout(() => slot.classList.remove('on-cooldown'), 1000);
+  }
+}
+
 function useItem(itemName) {
   game.socket.emit('useItem', { itemName });
 }
@@ -1808,7 +1963,7 @@ function updateSkillBar() {
   const skills = game.player.skills;
   const skillNames = Object.keys(skills);
   const icons = skillIcons[game.player.class] || {};
-  const skillSlots = document.querySelectorAll('.skill-row .skill-slot');
+  const skillSlots = document.querySelectorAll('.skill-row .skill-slot:not(.basic-slot)');
 
   skillSlots.forEach((slot, i) => {
     const skillName = skillNames[i];
