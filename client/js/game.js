@@ -22,6 +22,7 @@ const game = {
   tradeRoutes: [],
   skillNames: [],
   skillCooldowns: {},
+  cooldowns: {},   // { skillName|__basic: { end, dur } } for radial cooldown UI
   effects: [],
   time: 0,
   delta: 0.016,
@@ -144,9 +145,10 @@ const BRACER = '#7a5230';
 const CHAR_W = 24;
 const CHAR_H = 34;
 
-function getCharacterSprite(cls, outfitId, dir, gender) {
+// pose: 0 = idle, 1/2 = walk steps, 'atk' = attack stance
+function getCharacterSprite(cls, outfitId, dir, gender, pose = 0) {
   const g = gender === 'female' ? 'f' : 'm';
-  const key = `char|${cls}|${outfitId || ''}|${dir}|${g}`;
+  const key = `char|${cls}|${outfitId || ''}|${dir}|${g}|${pose}`;
   if (spriteCache.has(key)) return spriteCache.get(key);
 
   const look = { ...(classLooks[cls] || classLooks.darkKnight) };
@@ -156,7 +158,7 @@ function getCharacterSprite(cls, outfitId, dir, gender) {
   const { c, ctx } = makeCanvas(CHAR_W, CHAR_H);
 
   if (dir === 'left' || dir === 'right') {
-    drawCharSide(ctx, cls, look, female);
+    drawCharSide(ctx, cls, look, female, pose);
     if (dir === 'right') {
       const { c: mc, ctx: mctx } = makeCanvas(CHAR_W, CHAR_H);
       mctx.translate(mc.width, 0);
@@ -167,14 +169,71 @@ function getCharacterSprite(cls, outfitId, dir, gender) {
       return outlinedM;
     }
   } else if (dir === 'up') {
-    drawCharBack(ctx, cls, look, female);
+    drawCharBack(ctx, cls, look, female, pose);
   } else {
-    drawCharFront(ctx, cls, look, female);
+    drawCharFront(ctx, cls, look, female, pose);
   }
 
   const outlined = outlineSprite(c);
   spriteCache.set(key, outlined);
   return outlined;
+}
+
+// Legs + boots for front/back views, with walking steps and attack stance
+function drawLegsFrontBack(ctx, look, pose) {
+  const pantsDark = shadeColor(look.pants, -18);
+  const lLift = pose === 1 ? 1 : 0;   // left leg lifted
+  const rLift = pose === 2 ? 1 : 0;   // right leg lifted
+  const spread = pose === 'atk' ? 1 : 0; // wider stance while attacking
+
+  // legs
+  px(ctx, 8 - spread, 22, 3, 6 - lLift, look.pants);
+  px(ctx, 13 + spread, 22, 3, 6 - rLift, look.pants);
+  px(ctx, 10 - spread, 22, 1, 5 - lLift, pantsDark);
+  px(ctx, 13 + spread, 22, 1, 5 - rLift, pantsDark);
+  // knee crease
+  px(ctx, 8 - spread, 25, 3, 1, pantsDark);
+  px(ctx, 13 + spread, 25, 3, 1, pantsDark);
+
+  // boots
+  px(ctx, 8 - spread, 28 - lLift, 3, 3, BOOTS);
+  px(ctx, 13 + spread, 28 - rLift, 3, 3, BOOTS);
+  px(ctx, 7 - spread, 31 - lLift, 4, 2, BOOTS);
+  px(ctx, 13 + spread, 31 - rLift, 4, 2, BOOTS);
+  px(ctx, 7 - spread, 33 - lLift, 4, 1, BOOTS_DARK);
+  px(ctx, 13 + spread, 33 - rLift, 4, 1, BOOTS_DARK);
+  // boot highlights and laces
+  px(ctx, 8 - spread, 28 - lLift, 1, 2, shadeColor(BOOTS, 22));
+  px(ctx, 13 + spread, 28 - rLift, 1, 2, shadeColor(BOOTS, 22));
+  px(ctx, 9 - spread, 29 - lLift, 1, 1, BOOTS_DARK);
+  px(ctx, 14 + spread, 29 - rLift, 1, 1, BOOTS_DARK);
+}
+
+// Per-class gear details for extra MU-style realism (front view)
+function drawClassDetailsFront(ctx, cls, look, tx, tw) {
+  if (cls === 'darkKnight') {
+    // leather shoulder pads + chest strap
+    const pad = '#6a5a40';
+    px(ctx, tx - 2, 10, 3, 2, pad);
+    px(ctx, tx + tw - 1, 10, 3, 2, pad);
+    px(ctx, tx - 2, 10, 1, 1, shadeColor(pad, 25));
+    for (let i = 0; i < 4; i++) px(ctx, tx + 1 + i * 2, 12 + i, 1, 1, '#5a4530');
+  } else if (cls === 'darkWizard') {
+    // golden robe trim
+    px(ctx, tx, 21, tw, 1, '#a08a30');
+    px(ctx, tx, 14, tw, 1, shadeColor(look.tunic, -30));
+  } else if (cls === 'fairyElf') {
+    // quiver strap across the chest
+    for (let i = 0; i < 5; i++) px(ctx, tx + 1 + i, 11 + i, 1, 1, '#7a5a30');
+  } else if (cls === 'bicheon') {
+    // red martial sash
+    px(ctx, tx, 17, tw, 1, '#a03030');
+    px(ctx, tx + tw - 3, 20, 1, 3, '#a03030');
+  } else if (cls === 'heuksal') {
+    // dark scarf around the neck
+    px(ctx, 9, 9, 6, 1, '#2a1a3a');
+    px(ctx, 9, 10, 2, 2, '#2a1a3a');
+  }
 }
 
 function shadeColor(hex, amt) {
@@ -226,15 +285,18 @@ function drawHairFront(ctx, look, female) {
   }
 }
 
-function drawCharFront(ctx, cls, look, female) {
+function drawCharFront(ctx, cls, look, female, pose = 0) {
   const tunicDark = shadeColor(look.tunic, -22);
-  const pantsDark = shadeColor(look.pants, -18);
+  const tunicLight = shadeColor(look.tunic, 18);
   const hairC = look.hair || '#4a3520';
+  const attacking = pose === 'atk';
 
   // ---- head ----
   px(ctx, 9, 2, 6, 7, SKIN);
   px(ctx, 8, 4, 1, 4, SKIN);
   px(ctx, 15, 4, 1, 4, SKIN);
+  // face shading (light from top-left)
+  px(ctx, 14, 4, 1, 4, SKIN_SHADE);
   drawHairFront(ctx, look, female);
   // eyes (looking down slightly, like the reference)
   px(ctx, 10, 5, 1, 1, '#2a1a10');
@@ -258,6 +320,10 @@ function drawCharFront(ctx, cls, look, female) {
   px(ctx, tx - 1, 10, tw + 2, 2, look.tunic);          // shoulders
   px(ctx, tx, 10, tw, 8, look.tunic);                  // chest
   px(ctx, tx + tw - 1, 11, 1, 7, tunicDark);           // side shading
+  px(ctx, tx, 11, 1, 7, tunicLight);                   // light side highlight
+  // fabric fold lines
+  px(ctx, tx + 2, 14, 1, 3, tunicDark);
+  px(ctx, tx + tw - 3, 15, 1, 2, tunicDark);
   // V-neck lacing
   px(ctx, 11, 10, 2, 1, SKIN_SHADE);
   px(ctx, 11, 11, 2, 3, tunicDark);
@@ -270,18 +336,22 @@ function drawCharFront(ctx, cls, look, female) {
     px(ctx, 15, 15, 1, 3, tunicDark);
   }
 
+  drawClassDetailsFront(ctx, cls, look, tx, tw);
+
   // ---- arms: rolled sleeves, bare forearms, bracers ----
+  // while attacking the weapon arm is raised
   const armL = tx - 2, armR = tx + tw;
-  px(ctx, armL, 11, 2, 5, look.tunic);      // left sleeve
-  px(ctx, armR, 11, 2, 5, look.tunic);      // right sleeve
-  px(ctx, armL, 15, 2, 1, tunicDark);       // rolled cuff
-  px(ctx, armR, 15, 2, 1, tunicDark);
-  px(ctx, armL, 16, 2, 3, SKIN);            // forearms
-  px(ctx, armR, 16, 2, 3, SKIN);
-  px(ctx, armL, 17, 2, 2, BRACER);          // wrist bracers
-  px(ctx, armR, 17, 2, 2, BRACER);
-  px(ctx, armL, 19, 2, 2, SKIN);            // hands
-  px(ctx, armR, 19, 2, 2, SKIN);
+  const rArmY = attacking ? 9 : 11;   // right (weapon) arm raised when attacking
+  px(ctx, armL, 11, 2, 5, look.tunic);
+  px(ctx, armR, rArmY, 2, 5, look.tunic);
+  px(ctx, armL, 15, 2, 1, tunicDark);
+  px(ctx, armR, rArmY + 4, 2, 1, tunicDark);
+  px(ctx, armL, 16, 2, 3, SKIN);
+  px(ctx, armR, rArmY + 5, 2, 3, SKIN);
+  px(ctx, armL, 17, 2, 2, BRACER);
+  px(ctx, armR, rArmY + 6, 2, 2, BRACER);
+  px(ctx, armL, 19, 2, 2, SKIN);
+  px(ctx, armR, rArmY + 8, 2, 2, SKIN);
 
   // ---- belt with buckle ----
   px(ctx, tx, 18, tw, 2, BELT);
@@ -291,23 +361,9 @@ function drawCharFront(ctx, cls, look, female) {
   px(ctx, tx, 20, tw, 2, look.tunic);
   px(ctx, tx, 21, tw, 1, tunicDark);
 
-  // ---- legs ----
-  px(ctx, 8, 22, 3, 6, look.pants);
-  px(ctx, 13, 22, 3, 6, look.pants);
-  px(ctx, 10, 22, 1, 5, pantsDark);
-  px(ctx, 13, 22, 1, 5, pantsDark);
+  drawLegsFrontBack(ctx, look, pose);
 
-  // ---- boots ----
-  px(ctx, 8, 28, 3, 3, BOOTS);
-  px(ctx, 13, 28, 3, 3, BOOTS);
-  px(ctx, 7, 31, 4, 2, BOOTS);
-  px(ctx, 13, 31, 4, 2, BOOTS);
-  px(ctx, 7, 33, 4, 1, BOOTS_DARK);
-  px(ctx, 13, 33, 4, 1, BOOTS_DARK);
-  px(ctx, 8, 29, 1, 1, BOOTS_DARK);   // lace hints
-  px(ctx, 14, 29, 1, 1, BOOTS_DARK);
-
-  drawWeapon(ctx, cls, 'front');
+  drawWeapon(ctx, cls, 'front', attacking);
 
   if (look.glow) {
     px(ctx, tx, 10, 1, 10, look.glow);
@@ -315,16 +371,18 @@ function drawCharFront(ctx, cls, look, female) {
   }
 }
 
-function drawCharBack(ctx, cls, look, female) {
+function drawCharBack(ctx, cls, look, female, pose = 0) {
   const tunicDark = shadeColor(look.tunic, -22);
-  const pantsDark = shadeColor(look.pants, -18);
+  const tunicLight = shadeColor(look.tunic, 18);
   const hairC = look.hood || look.helmet || look.hair || '#4a3520';
+  const attacking = pose === 'atk';
 
   // head covered by hair/hood from behind
   px(ctx, 9, 2, 6, 7, hairC);
   px(ctx, 8, 3, 1, 5, hairC);
   px(ctx, 15, 3, 1, 5, hairC);
   px(ctx, 9, 0, 6, 2, hairC);
+  px(ctx, 9, 1, 2, 2, shadeColor(hairC, 18)); // hair highlight
   if (female && !look.helmet && !look.hood) {
     // long hair down the back
     px(ctx, 9, 9, 6, 5, look.hair);
@@ -338,41 +396,34 @@ function drawCharBack(ctx, cls, look, female) {
   px(ctx, tx - 1, 10, tw + 2, 2, look.tunic);
   px(ctx, tx, 10, tw, 8, look.tunic);
   px(ctx, tx, 11, 1, 7, tunicDark);
+  px(ctx, tx + tw - 1, 11, 1, 7, tunicLight);
+  px(ctx, tx + 3, 13, 1, 4, tunicDark); // back fold
   if (female) {
     px(ctx, 8, 15, 1, 3, tunicDark);
     px(ctx, 15, 15, 1, 3, tunicDark);
   }
 
   const armL = tx - 2, armR = tx + tw;
+  const rArmY = attacking ? 9 : 11;
   px(ctx, armL, 11, 2, 5, look.tunic);
-  px(ctx, armR, 11, 2, 5, look.tunic);
+  px(ctx, armR, rArmY, 2, 5, look.tunic);
   px(ctx, armL, 15, 2, 1, tunicDark);
-  px(ctx, armR, 15, 2, 1, tunicDark);
+  px(ctx, armR, rArmY + 4, 2, 1, tunicDark);
   px(ctx, armL, 16, 2, 3, SKIN);
-  px(ctx, armR, 16, 2, 3, SKIN);
+  px(ctx, armR, rArmY + 5, 2, 3, SKIN);
   px(ctx, armL, 17, 2, 2, BRACER);
-  px(ctx, armR, 17, 2, 2, BRACER);
+  px(ctx, armR, rArmY + 6, 2, 2, BRACER);
   px(ctx, armL, 19, 2, 2, SKIN);
-  px(ctx, armR, 19, 2, 2, SKIN);
+  px(ctx, armR, rArmY + 8, 2, 2, SKIN);
 
   // plain belt (no buckle from behind)
   px(ctx, tx, 18, tw, 2, BELT);
   px(ctx, tx, 20, tw, 2, look.tunic);
   px(ctx, tx, 21, tw, 1, tunicDark);
 
-  px(ctx, 8, 22, 3, 6, look.pants);
-  px(ctx, 13, 22, 3, 6, look.pants);
-  px(ctx, 8, 22, 1, 5, pantsDark);
-  px(ctx, 15, 22, 1, 5, pantsDark);
+  drawLegsFrontBack(ctx, look, pose);
 
-  px(ctx, 8, 28, 3, 3, BOOTS);
-  px(ctx, 13, 28, 3, 3, BOOTS);
-  px(ctx, 7, 31, 4, 2, BOOTS);
-  px(ctx, 13, 31, 4, 2, BOOTS);
-  px(ctx, 7, 33, 4, 1, BOOTS_DARK);
-  px(ctx, 13, 33, 4, 1, BOOTS_DARK);
-
-  drawWeapon(ctx, cls, 'back');
+  drawWeapon(ctx, cls, 'back', attacking);
 
   if (look.glow) {
     px(ctx, tx, 10, 1, 10, look.glow);
@@ -380,106 +431,205 @@ function drawCharBack(ctx, cls, look, female) {
   }
 }
 
-function drawCharSide(ctx, cls, look, female) {
+function drawCharSide(ctx, cls, look, female, pose = 0) {
   // facing LEFT
   const tunicDark = shadeColor(look.tunic, -22);
+  const tunicLight = shadeColor(look.tunic, 18);
   const pantsDark = shadeColor(look.pants, -18);
   const hairC = look.hair || '#4a3520';
+  const attacking = pose === 'atk';
 
-  // ---- head ----
-  px(ctx, 9, 2, 6, 7, SKIN);
-  // hair covering top and back of head
+  // ---- head (leaning forward slightly when attacking) ----
+  const hx = attacking ? -1 : 0;
+  px(ctx, 9 + hx, 2, 6, 7, SKIN);
   if (look.helmet) {
-    px(ctx, 8, 0, 8, 5, look.helmet);
+    px(ctx, 8 + hx, 0, 8, 5, look.helmet);
   } else if (look.hood) {
-    px(ctx, 8, 0, 8, 6, look.hood);
-    px(ctx, 13, 6, 3, 3, look.hood);
+    px(ctx, 8 + hx, 0, 8, 6, look.hood);
+    px(ctx, 13 + hx, 6, 3, 3, look.hood);
   } else if (look.hat) {
-    px(ctx, 10, 0, 5, 2, look.hat);
-    px(ctx, 8, 2, 9, 2, look.hat);
+    px(ctx, 10 + hx, 0, 5, 2, look.hat);
+    px(ctx, 8 + hx, 2, 9, 2, look.hat);
   } else {
-    px(ctx, 9, 0, 7, 2, hairC);
-    px(ctx, 10, 2, 6, 2, hairC);
-    px(ctx, 13, 4, 3, 4, hairC);   // back of head
+    px(ctx, 9 + hx, 0, 7, 2, hairC);
+    px(ctx, 10 + hx, 2, 6, 2, hairC);
+    px(ctx, 13 + hx, 4, 3, 4, hairC);   // back of head
+    px(ctx, 10 + hx, 0, 2, 1, shadeColor(hairC, 18)); // highlight
   }
   if (female && !look.helmet && !look.hood) {
-    px(ctx, 14, 6, 2, 9, look.hair); // long hair down the back
-    px(ctx, 15, 14, 1, 2, shadeColor(look.hair, -25));
+    px(ctx, 14 + hx, 6, 2, 9, look.hair); // long hair down the back
+    px(ctx, 15 + hx, 14, 1, 2, shadeColor(look.hair, -25));
   }
   // one eye + beard on the chin
-  px(ctx, 10, 5, 1, 1, '#2a1a10');
+  px(ctx, 10 + hx, 5, 1, 1, '#2a1a10');
   if (!female && !look.helmet) {
-    px(ctx, 9, 7, 4, 2, hairC);
+    px(ctx, 9 + hx, 7, 4, 2, hairC);
   }
-  px(ctx, 11, 9, 3, 1, SKIN_SHADE);
+  px(ctx, 11 + hx, 9, 3, 1, SKIN_SHADE);
 
   // ---- body ----
   px(ctx, 9, 10, 7, 8, look.tunic);
   px(ctx, 15, 11, 1, 7, tunicDark);
+  px(ctx, 9, 11, 1, 7, tunicLight);
+  px(ctx, 12, 13, 1, 4, tunicDark); // fold
   if (female) {
     px(ctx, 9, 15, 1, 3, tunicDark);
     px(ctx, 14, 15, 1, 3, tunicDark);
   }
 
-  // front arm
-  px(ctx, 7, 11, 2, 5, look.tunic);
-  px(ctx, 7, 15, 2, 1, tunicDark);
-  px(ctx, 7, 16, 2, 3, SKIN);
-  px(ctx, 7, 17, 2, 2, BRACER);
-  px(ctx, 7, 19, 2, 2, SKIN);
+  // front arm - extended forward when attacking
+  if (attacking) {
+    px(ctx, 4, 12, 5, 2, look.tunic);   // arm reaching forward
+    px(ctx, 3, 12, 2, 2, SKIN);         // forearm
+    px(ctx, 2, 12, 2, 2, BRACER);       // bracer
+    px(ctx, 1, 12, 2, 2, SKIN);         // hand
+  } else {
+    px(ctx, 7, 11, 2, 5, look.tunic);
+    px(ctx, 7, 15, 2, 1, tunicDark);
+    px(ctx, 7, 16, 2, 3, SKIN);
+    px(ctx, 7, 17, 2, 2, BRACER);
+    px(ctx, 7, 19, 2, 2, SKIN);
+  }
 
   // belt
   px(ctx, 9, 18, 7, 2, BELT);
   px(ctx, 9, 20, 7, 2, look.tunic);
   px(ctx, 9, 21, 7, 1, tunicDark);
 
-  // legs (one slightly forward)
-  px(ctx, 9, 22, 3, 6, look.pants);
-  px(ctx, 12, 22, 3, 6, pantsDark);
+  // ---- legs: real stride poses ----
+  if (pose === 1) {
+    // stride: front leg forward, back leg behind
+    px(ctx, 7, 22, 3, 6, look.pants);
+    px(ctx, 13, 22, 3, 6, pantsDark);
+    px(ctx, 7, 28, 3, 3, BOOTS);
+    px(ctx, 13, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 5, 31, 5, 2, BOOTS);
+    px(ctx, 13, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 5, 33, 5, 1, BOOTS_DARK);
+    px(ctx, 13, 33, 4, 1, BOOTS_DARK);
+  } else if (pose === 2) {
+    // passing: legs close together
+    px(ctx, 10, 22, 3, 6, look.pants);
+    px(ctx, 12, 22, 3, 6, pantsDark);
+    px(ctx, 10, 28, 3, 3, BOOTS);
+    px(ctx, 12, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 9, 31, 4, 2, BOOTS);
+    px(ctx, 12, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 9, 33, 4, 1, BOOTS_DARK);
+    px(ctx, 12, 33, 4, 1, BOOTS_DARK);
+  } else if (attacking) {
+    // lunge stance: wide split
+    px(ctx, 6, 22, 3, 6, look.pants);
+    px(ctx, 14, 22, 3, 6, pantsDark);
+    px(ctx, 6, 28, 3, 3, BOOTS);
+    px(ctx, 14, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 4, 31, 5, 2, BOOTS);
+    px(ctx, 14, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 4, 33, 5, 1, BOOTS_DARK);
+    px(ctx, 14, 33, 4, 1, BOOTS_DARK);
+  } else {
+    // idle
+    px(ctx, 9, 22, 3, 6, look.pants);
+    px(ctx, 12, 22, 3, 6, pantsDark);
+    px(ctx, 9, 28, 3, 3, BOOTS);
+    px(ctx, 12, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 7, 31, 5, 2, BOOTS);
+    px(ctx, 12, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 7, 33, 5, 1, BOOTS_DARK);
+    px(ctx, 12, 33, 4, 1, BOOTS_DARK);
+  }
 
-  // boots with forward toes
-  px(ctx, 9, 28, 3, 3, BOOTS);
-  px(ctx, 12, 28, 3, 3, shadeColor(BOOTS, -12));
-  px(ctx, 7, 31, 5, 2, BOOTS);
-  px(ctx, 12, 31, 4, 2, shadeColor(BOOTS, -12));
-  px(ctx, 7, 33, 5, 1, BOOTS_DARK);
-  px(ctx, 12, 33, 4, 1, BOOTS_DARK);
-
-  drawWeapon(ctx, cls, 'side');
+  drawWeapon(ctx, cls, 'side', attacking);
 
   if (look.glow) {
     px(ctx, 9, 10, 1, 10, look.glow);
   }
 }
 
-function drawWeapon(ctx, cls, view) {
+function drawWeapon(ctx, cls, view, attacking = false) {
   const isSword = (cls === 'darkKnight' || cls === 'bicheon');
   if (isSword) {
-    if (view === 'side') {
-      px(ctx, 3, 8, 1, 13, '#c8c8d0');
-      px(ctx, 3, 8, 1, 2, '#e8e8f0');
-      px(ctx, 2, 19, 3, 1, '#8a6a20');
-      px(ctx, 3, 20, 1, 2, '#5a3a1a');
+    if (attacking) {
+      if (view === 'side') {
+        // horizontal thrust forward (facing left)
+        px(ctx, 0, 12, 8, 1, '#c8c8d0');
+        px(ctx, 0, 12, 2, 1, '#f0f0f8');
+        px(ctx, 0, 11, 1, 1, '#f0f0f8');   // tip
+        px(ctx, 7, 11, 1, 3, '#8a6a20');   // guard
+      } else {
+        // diagonal overhead swing
+        const x = view === 'back' ? 3 : 16;
+        px(ctx, x + 4, 2, 2, 1, '#f0f0f8');
+        px(ctx, x + 3, 3, 2, 1, '#d8d8e0');
+        px(ctx, x + 2, 4, 2, 2, '#c8c8d0');
+        px(ctx, x + 1, 6, 2, 2, '#c8c8d0');
+        px(ctx, x, 8, 2, 1, '#8a6a20');    // guard
+        px(ctx, x, 9, 1, 2, '#5a3a1a');    // grip
+      }
     } else {
-      const x = view === 'back' ? 4 : 19;
-      px(ctx, x, 7, 1, 12, '#c8c8d0');
-      px(ctx, x, 7, 1, 2, '#e8e8f0');
-      px(ctx, x - 1, 18, 3, 1, '#8a6a20');
-      px(ctx, x, 19, 1, 2, '#5a3a1a');
+      if (view === 'side') {
+        px(ctx, 3, 8, 1, 13, '#c8c8d0');
+        px(ctx, 3, 8, 1, 2, '#e8e8f0');
+        px(ctx, 2, 19, 3, 1, '#8a6a20');
+        px(ctx, 3, 20, 1, 2, '#5a3a1a');
+      } else {
+        const x = view === 'back' ? 4 : 19;
+        px(ctx, x, 7, 1, 12, '#c8c8d0');
+        px(ctx, x, 7, 1, 2, '#e8e8f0');
+        px(ctx, x - 1, 18, 3, 1, '#8a6a20');
+        px(ctx, x, 19, 1, 2, '#5a3a1a');
+      }
     }
   } else if (cls === 'darkWizard') {
-    const x = view === 'side' ? 3 : (view === 'back' ? 4 : 19);
-    px(ctx, x, 5, 1, 18, '#6a4a20');
-    px(ctx, x - 1, 2, 3, 3, '#aa66ff');
-    px(ctx, x, 3, 1, 1, '#e0ccff');
+    const x = view === 'side' ? (attacking ? 2 : 3) : (view === 'back' ? 4 : 19);
+    if (attacking) {
+      // staff raised, orb blazing
+      px(ctx, x, 2, 1, 19, '#6a4a20');
+      px(ctx, x - 1, 0, 3, 3, '#aa66ff');
+      px(ctx, x, 0, 1, 1, '#ffffff');
+      px(ctx, x - 2, 1, 1, 1, '#d8bbff');   // sparks
+      px(ctx, x + 2, 0, 1, 1, '#d8bbff');
+      px(ctx, x - 1, 3, 3, 1, '#8844dd');
+    } else {
+      px(ctx, x, 5, 1, 18, '#6a4a20');
+      px(ctx, x - 1, 2, 3, 3, '#aa66ff');
+      px(ctx, x, 3, 1, 1, '#e0ccff');
+    }
   } else if (cls === 'fairyElf') {
     const x = view === 'side' ? 3 : (view === 'back' ? 4 : 19);
-    px(ctx, x, 7, 1, 12, '#8a6a30');
-    px(ctx, x - 1, 6, 1, 2, '#8a6a30');
-    px(ctx, x - 1, 18, 1, 2, '#8a6a30');
-    px(ctx, x + 1, 8, 1, 10, '#d8d8c0'); // bowstring
+    if (attacking && view === 'side') {
+      // drawn bow with nocked arrow (facing left)
+      px(ctx, 2, 7, 1, 12, '#8a6a30');
+      px(ctx, 3, 8, 1, 4, '#d8d8c0');     // string pulled back
+      px(ctx, 3, 12, 1, 1, '#d8d8c0');
+      px(ctx, 3, 13, 1, 5, '#d8d8c0');
+      px(ctx, 0, 12, 6, 1, '#c8a860');    // arrow
+      px(ctx, 0, 12, 1, 1, '#f0f0f0');    // arrowhead
+    } else if (attacking) {
+      px(ctx, x, 7, 1, 12, '#8a6a30');
+      px(ctx, x + 1, 8, 1, 10, '#d8d8c0');
+      px(ctx, x - 2, 12, 4, 1, '#c8a860'); // arrow
+      px(ctx, x - 2, 12, 1, 1, '#f0f0f0');
+    } else {
+      px(ctx, x, 7, 1, 12, '#8a6a30');
+      px(ctx, x - 1, 6, 1, 2, '#8a6a30');
+      px(ctx, x - 1, 18, 1, 2, '#8a6a30');
+      px(ctx, x + 1, 8, 1, 10, '#d8d8c0'); // bowstring
+    }
   } else if (cls === 'heuksal') {
-    if (view !== 'back') {
+    if (attacking) {
+      if (view === 'side') {
+        // dagger thrust forward
+        px(ctx, 0, 12, 5, 1, '#b0b0b8');
+        px(ctx, 0, 12, 1, 1, '#e8e8f0');
+        px(ctx, 5, 11, 1, 3, '#3a2a1a');
+      } else {
+        const x = view === 'back' ? 3 : 18;
+        px(ctx, x, 6, 1, 5, '#b0b0b8');
+        px(ctx, x, 6, 1, 1, '#e8e8f0');
+        px(ctx, x - 1, 11, 3, 1, '#3a2a1a');
+      }
+    } else if (view !== 'back') {
       const x = view === 'side' ? 4 : 19;
       px(ctx, x, 14, 1, 6, '#b0b0b8');
       px(ctx, x, 14, 1, 1, '#e0e0e8');
@@ -993,6 +1143,37 @@ function initSocket() {
     // Spawn hit/spell visual effect
     spawnSkillEffect(data);
 
+    // Attack animation: attacker turns to target and performs a motion by attack type
+    const attackerEnt = data.attackerId === game.player?.id
+      ? game.player
+      : (game.players.get(data.attackerId) || game.npcs.get(data.attackerId));
+    const defenderEnt = data.defenderId === game.player?.id
+      ? game.player
+      : (game.npcs.get(data.defenderId) || game.players.get(data.defenderId));
+
+    if (attackerEnt?.position && defenderEnt?.position) {
+      const dx = defenderEnt.position.x - attackerEnt.position.x;
+      const dz = defenderEnt.position.z - attackerEnt.position.z;
+      if (Math.abs(dx) + Math.abs(dz) > 0.1) {
+        attackerEnt.facing = getFacing(dx, dz);
+      }
+      let kind = 'slash';
+      if (attackerEnt.class === 'darkWizard') kind = 'cast';
+      else if (attackerEnt.class === 'fairyElf') kind = data.skill === 'heal' ? 'cast' : 'bow';
+      attackerEnt.attackAnim = { t: 0, dur: 0.35, kind };
+    }
+
+    // Start cooldown sweep for my own attacks (server confirmed the hit)
+    if (data.attackerId === game.player?.id) {
+      const now = performance.now();
+      if (data.skill && game.player.skills[data.skill]) {
+        const cd = game.player.skills[data.skill].cooldown;
+        game.cooldowns[data.skill] = { end: now + cd, dur: cd };
+      } else if (!data.skill) {
+        game.cooldowns.__basic = { end: now + 1000, dur: 1000 };
+      }
+    }
+
     // Screen shake on critical hits involving the local player
     if (data.critical && (data.attackerId === game.player?.id || data.defenderId === game.player?.id)) {
       game.shake = 0.3;
@@ -1252,15 +1433,35 @@ function updateEntityFacing(ent, dt) {
   ent.lastPos.z = ent.position.z;
 }
 
+const FACING_VEC = {
+  down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0]
+};
+
 function drawCharacter(ctx, ent, isLocal) {
   const s = worldToScreen(ent.position.x, ent.position.z);
   const outfitId = ent.equipment?.outfit?.outfitId || null;
-  const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down', ent.gender);
+
+  // pose: attack > walking steps > idle
+  let pose = 0;
+  let lungeX = 0, lungeY = 0;
+  if (ent.attackAnim) {
+    pose = 'atk';
+    // quick lunge toward the target and back
+    const p = Math.min(1, ent.attackAnim.t / ent.attackAnim.dur);
+    const lunge = Math.sin(p * Math.PI) * 9 * (game.zoom / 14);
+    const v = FACING_VEC[ent.facing || 'down'];
+    lungeX = v[0] * lunge;
+    lungeY = v[1] * lunge;
+  } else if (ent.moving) {
+    pose = (Math.floor(ent.animPhase * 0.8) % 2) + 1; // alternate step frames
+  }
+
+  const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down', ent.gender, pose);
 
   const scale = (game.zoom / 14) * 0.95;
   const w = sprite.width * scale;
   const h = sprite.height * scale;
-  const bob = ent.moving ? Math.sin(ent.animPhase * 2) * 2 * scale : 0;
+  const bob = ent.moving ? Math.sin(ent.animPhase * 2) * 1.2 * scale : 0;
 
   // selection ring
   if (game.selectedTarget && game.selectedTarget.id === ent.id) {
@@ -1281,7 +1482,7 @@ function drawCharacter(ctx, ent, isLocal) {
   if (ent.hitFlash > 0) {
     ctx.filter = 'brightness(1.9) saturate(1.4)';
   }
-  ctx.drawImage(sprite, s.x - w / 2, s.y - h + bob, w, h);
+  ctx.drawImage(sprite, s.x - w / 2 + lungeX, s.y - h + bob + lungeY, w, h);
   ctx.filter = 'none';
 
   // wings indicator (glow behind player if wings equipped)
@@ -1313,6 +1514,16 @@ function drawMonster(ctx, npc) {
   const h = sprite.height * scale;
   const bob = npc.moving ? Math.sin(npc.animPhase * 2) * 2 * scale : 0;
 
+  // attack lunge toward target
+  let lungeX = 0, lungeY = 0;
+  if (npc.attackAnim) {
+    const p = Math.min(1, npc.attackAnim.t / npc.attackAnim.dur);
+    const lunge = Math.sin(p * Math.PI) * 8 * (game.zoom / 14);
+    const v = FACING_VEC[npc.facing || 'down'];
+    lungeX = v[0] * lunge;
+    lungeY = v[1] * lunge;
+  }
+
   if (game.selectedTarget && game.selectedTarget.id === npc.id) {
     ctx.strokeStyle = '#ff4040';
     ctx.lineWidth = 2;
@@ -1339,7 +1550,7 @@ function drawMonster(ctx, npc) {
   if (npc.hitFlash > 0) {
     ctx.filter = 'brightness(1.9) saturate(1.4)';
   }
-  ctx.drawImage(sprite, s.x - w / 2, s.y - h + bob, w, h);
+  ctx.drawImage(sprite, s.x - w / 2 + lungeX, s.y - h + bob + lungeY, w, h);
   ctx.filter = 'none';
 
   // health bar
@@ -2079,14 +2290,48 @@ function useBasicAttack() {
     skill: null
   });
 
-  // cooldown indicator on the basic attack slot
-  const slot = document.querySelector('.skill-slot.basic-slot');
-  if (slot) {
-    slot.classList.add('on-cooldown');
-    const cd = slot.querySelector('.skill-cooldown');
-    if (cd) cd.textContent = '1';
-    setTimeout(() => slot.classList.remove('on-cooldown'), 1000);
+  // optimistic radial cooldown on the basic slot
+  game.cooldowns.__basic = { end: performance.now() + 1000, dur: 1000 };
+}
+
+// Radial clockwise cooldown sweep (dark overlay clears clockwise)
+function updateCooldownUI() {
+  const now = performance.now();
+
+  const applyToSlot = (slotEl, overlayEl, cd) => {
+    if (!slotEl || !overlayEl) return;
+    if (cd && now < cd.end) {
+      const remaining = (cd.end - now) / 1000;
+      const progress = 1 - (cd.end - now) / cd.dur; // 0 -> 1 as it recharges
+      slotEl.classList.add('on-cooldown');
+      overlayEl.style.background =
+        `conic-gradient(transparent ${progress * 360}deg, rgba(0,0,0,0.75) ${progress * 360}deg)`;
+      overlayEl.textContent = remaining >= 1 ? Math.ceil(remaining) : remaining.toFixed(1);
+    } else {
+      slotEl.classList.remove('on-cooldown');
+      overlayEl.style.background = 'none';
+      overlayEl.textContent = '';
+    }
+  };
+
+  // basic attack slot
+  const basicSlot = document.querySelector('.skill-slot.basic-slot');
+  if (basicSlot) {
+    applyToSlot(basicSlot, basicSlot.querySelector('.skill-cooldown'), game.cooldowns.__basic);
   }
+
+  // desktop skill slots
+  document.querySelectorAll('.skill-row .skill-slot:not(.basic-slot)').forEach((slot, i) => {
+    const skillName = game.skillNames[i];
+    applyToSlot(slot, slot.querySelector('.skill-cooldown'), skillName ? game.cooldowns[skillName] : null);
+  });
+
+  // mobile skill buttons
+  document.querySelectorAll('.mobile-skill-btn').forEach((btn) => {
+    const i = parseInt(btn.dataset.skill);
+    const skillName = game.skillNames[i];
+    applyToSlot(btn, btn.querySelector('.cooldown-overlay'), skillName ? game.cooldowns[skillName] : null);
+  });
 }
 
 function useItem(itemName) {
@@ -2620,6 +2865,20 @@ function gameLoop() {
   if (game.player?.hitFlash > 0) game.player.hitFlash -= delta;
   game.players.forEach(p => { if (p.hitFlash > 0) p.hitFlash -= delta; });
   game.npcs.forEach(n => { if (n.hitFlash > 0) n.hitFlash -= delta; });
+
+  // advance attack animations
+  const tickAttack = (ent) => {
+    if (ent?.attackAnim) {
+      ent.attackAnim.t += delta;
+      if (ent.attackAnim.t >= ent.attackAnim.dur) ent.attackAnim = null;
+    }
+  };
+  tickAttack(game.player);
+  game.players.forEach(tickAttack);
+  game.npcs.forEach(tickAttack);
+
+  // radial cooldown sweeps
+  updateCooldownUI();
 
   if (game.player) {
     let moveX = 0, moveZ = 0;
