@@ -159,6 +159,12 @@ const itemTemplates = {
   silverBow: { name: 'Silver Bow', type: 'weapon', slot: 'mainHand', weaponType: 'bow', stats: { damage: 40, critChance: 0.08 }, requiredLevel: 30 },
   celestialBow: { name: 'Celestial Bow', type: 'weapon', slot: 'mainHand', weaponType: 'bow', stats: { damage: 60, critChance: 0.12, attackSpeed: 0.1 }, requiredLevel: 50, glow: 'green' },
 
+  // Outfits (costumes) - change character appearance, drop from monsters
+  banditOutfit: { name: 'Bandit Outfit', type: 'outfit', slot: 'outfit', outfitId: 'bandit', stats: { defense: 3 }, requiredLevel: 1 },
+  knightOutfit: { name: 'Knight Outfit', type: 'outfit', slot: 'outfit', outfitId: 'knight', stats: { defense: 8, health: 20 }, requiredLevel: 5 },
+  royalOutfit: { name: 'Royal Outfit', type: 'outfit', slot: 'outfit', outfitId: 'royal', stats: { defense: 12, damage: 5 }, requiredLevel: 12 },
+  shadowOutfit: { name: 'Shadow Outfit', type: 'outfit', slot: 'outfit', outfitId: 'shadow', stats: { defense: 18, damage: 10, speed: 0.05 }, requiredLevel: 25 },
+
   // Armor
   leatherArmor: { name: 'Leather Armor', type: 'armor', slot: 'chest', stats: { defense: 8 }, requiredLevel: 1 },
   paddedArmor: { name: 'Padded Armor', type: 'armor', slot: 'chest', stats: { defense: 15 }, requiredLevel: 8 },
@@ -581,6 +587,17 @@ function generateDrops(monster) {
       }
       drops.push(item);
     }
+  }
+
+  // Outfit drops - occasional (separate roll)
+  const outfitChance = monster.boss ? 0.35 : (monster.rare ? 0.2 : 0.07);
+  if (Math.random() < outfitChance) {
+    const outfitPool = ['banditOutfit'];
+    if (monster.level >= 5) outfitPool.push('knightOutfit');
+    if (monster.level >= 12) outfitPool.push('royalOutfit');
+    if (monster.level >= 25) outfitPool.push('shadowOutfit');
+    const outfitId = outfitPool[Math.floor(Math.random() * outfitPool.length)];
+    drops.push({ ...itemTemplates[outfitId], quantity: 1 });
   }
 
   return drops;

@@ -5,14 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MU Legends Online - Dark Fantasy MMORPG</title>
   <link rel="stylesheet" href="css/game.css">
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-      }
-    }
-  </script>
 </head>
 <body>
   <!-- Login Screen -->
@@ -376,6 +368,7 @@
           </div>
           <div class="equip-row">
             <div class="equip-slot wings-slot" data-slot="wings"><span class="slot-label">Wings</span><span class="slot-item">Empty</span></div>
+            <div class="equip-slot outfit-slot" data-slot="outfit"><span class="slot-label">Outfit</span><span class="slot-item">Empty</span></div>
           </div>
         </div>
       </div>
@@ -507,6 +500,6 @@
   </div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script type="module" src="js/game.js?v=3"></script>
+  <script src="js/game.js?v=4"></script>
 </body>
 </html>
