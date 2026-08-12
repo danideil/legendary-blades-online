@@ -26,8 +26,12 @@ const game = {
   effects: [],
   time: 0,
   delta: 0.016,
-  shake: 0
+  shake: 0,
+  moveTarget: null,     // { x, z } - click-to-move destination
+  chaseTargetId: null   // npc id - approach and melee attack
 };
+
+const MELEE_RANGE = 3; // basic attack range - close combat, enemy can hit back too
 
 // Class icons and skill icons
 const classIcons = {
@@ -790,46 +794,150 @@ function getObjectSprite(kind) {
 
   let result;
   if (kind === 'tree') {
-    const { c, ctx } = makeCanvas(20, 26);
-    px(ctx, 8, 16, 4, 10, '#6a4a2a');       // trunk
-    px(ctx, 3, 2, 14, 14, '#2a7a2a');       // canopy
-    px(ctx, 5, 0, 10, 4, '#2a7a2a');
-    px(ctx, 1, 6, 4, 8, '#2a7a2a');
-    px(ctx, 15, 6, 4, 8, '#2a7a2a');
-    px(ctx, 5, 4, 4, 4, '#38963a');         // highlights
-    px(ctx, 11, 8, 4, 3, '#38963a');
+    // oak: layered canopy with 3 green tones, shaded trunk with roots
+    const { c, ctx } = makeCanvas(22, 30);
+    px(ctx, 9, 19, 4, 9, '#6a4a2a');          // trunk
+    px(ctx, 9, 19, 1, 9, '#8a6540');          // trunk highlight
+    px(ctx, 12, 20, 1, 8, '#4e3319');         // trunk shade
+    px(ctx, 7, 27, 3, 2, '#5a3d22');          // roots
+    px(ctx, 12, 27, 3, 2, '#5a3d22');
+    px(ctx, 10, 22, 1, 2, '#4e3319');         // bark line
+    // canopy: dark base, mid, highlights
+    px(ctx, 3, 4, 16, 13, '#25682a');
+    px(ctx, 6, 1, 10, 5, '#25682a');
+    px(ctx, 1, 8, 4, 7, '#25682a');
+    px(ctx, 17, 8, 4, 7, '#25682a');
+    px(ctx, 4, 3, 12, 10, '#338a38');         // mid tone
+    px(ctx, 7, 1, 7, 4, '#338a38');
+    px(ctx, 5, 3, 5, 4, '#46a84c');           // sunlit top-left
+    px(ctx, 8, 1, 4, 2, '#46a84c');
+    px(ctx, 12, 7, 4, 3, '#46a84c');
+    px(ctx, 6, 9, 3, 2, '#46a84c');
+    px(ctx, 4, 13, 13, 3, '#1d5522');         // canopy underside
+    result = c;
+  } else if (kind === 'pine') {
+    const { c, ctx } = makeCanvas(20, 32);
+    px(ctx, 9, 25, 3, 6, '#5e4023');           // trunk
+    px(ctx, 9, 25, 1, 6, '#7a5a35');
+    // three triangular layers
+    px(ctx, 7, 0, 6, 3, '#1e6030');
+    px(ctx, 5, 3, 10, 5, '#1e6030');
+    px(ctx, 8, 1, 3, 2, '#2f804a');
+    px(ctx, 4, 8, 13, 6, '#1a5429');
+    px(ctx, 6, 9, 4, 2, '#2f804a');
+    px(ctx, 2, 14, 17, 7, '#174a24');
+    px(ctx, 4, 15, 5, 2, '#256b3a');
+    px(ctx, 3, 21, 15, 4, '#133f1e');
     result = c;
   } else if (kind === 'rock') {
-    const { c, ctx } = makeCanvas(14, 10);
-    px(ctx, 2, 3, 10, 7, '#8a8a92');
-    px(ctx, 4, 1, 6, 3, '#8a8a92');
-    px(ctx, 4, 3, 3, 2, '#a8a8b0');
-    px(ctx, 3, 8, 8, 2, '#6a6a72');
+    const { c, ctx } = makeCanvas(14, 11);
+    px(ctx, 2, 4, 10, 7, '#7e7e88');
+    px(ctx, 4, 1, 6, 4, '#7e7e88');
+    px(ctx, 4, 2, 3, 2, '#a2a2ac');           // top highlight
+    px(ctx, 3, 4, 2, 2, '#92929c');
+    px(ctx, 9, 5, 3, 4, '#62626c');           // shade side
+    px(ctx, 3, 9, 8, 2, '#54545e');           // base
+    px(ctx, 2, 7, 3, 2, '#4e7a4e');           // moss
+    px(ctx, 7, 3, 2, 1, '#8f8f99');           // crack
+    px(ctx, 6, 4, 1, 2, '#62626c');
+    result = c;
+  } else if (kind === 'bush') {
+    const { c, ctx } = makeCanvas(12, 9);
+    px(ctx, 1, 3, 10, 5, '#2b6e30');
+    px(ctx, 3, 1, 6, 4, '#2b6e30');
+    px(ctx, 3, 2, 4, 2, '#3f8f46');
+    px(ctx, 2, 4, 2, 2, '#3f8f46');
+    px(ctx, 2, 7, 9, 1, '#1d5122');
+    px(ctx, 8, 3, 1, 1, '#c03040');           // berries
+    px(ctx, 5, 5, 1, 1, '#c03040');
+    px(ctx, 9, 5, 1, 1, '#c03040');
+    result = c;
+  } else if (kind === 'flowers') {
+    const { c, ctx } = makeCanvas(12, 8);
+    // grass tuft
+    px(ctx, 2, 4, 1, 4, '#3f8f46');
+    px(ctx, 5, 3, 1, 5, '#3f8f46');
+    px(ctx, 9, 4, 1, 4, '#3f8f46');
+    px(ctx, 7, 5, 1, 3, '#2b6e30');
+    // flowers
+    px(ctx, 1, 2, 2, 2, '#e05070');
+    px(ctx, 1, 2, 1, 1, '#ff88a8');
+    px(ctx, 5, 1, 2, 2, '#e8c830');
+    px(ctx, 5, 1, 1, 1, '#fff090');
+    px(ctx, 9, 2, 2, 2, '#7888e0');
+    px(ctx, 9, 2, 1, 1, '#a8b8ff');
+    result = c;
+  } else if (kind === 'mushroom') {
+    const { c, ctx } = makeCanvas(7, 7);
+    px(ctx, 2, 3, 2, 4, '#d8c8a8');            // stem
+    px(ctx, 0, 1, 6, 3, '#b03028');            // cap
+    px(ctx, 1, 0, 4, 2, '#b03028');
+    px(ctx, 1, 1, 1, 1, '#e8e0d0');            // dots
+    px(ctx, 4, 2, 1, 1, '#e8e0d0');
     result = c;
   } else if (kind === 'building') {
-    const { c, ctx } = makeCanvas(44, 36);
-    px(ctx, 4, 14, 36, 22, '#c8a878');       // walls
-    px(ctx, 2, 6, 40, 9, '#8a2020');         // roof
-    px(ctx, 6, 2, 32, 5, '#a03030');
-    px(ctx, 19, 26, 7, 10, '#5a3a1a');       // door
-    px(ctx, 8, 18, 6, 6, '#88bbdd');         // windows
-    px(ctx, 30, 18, 6, 6, '#88bbdd');
-    px(ctx, 8, 17, 6, 1, '#6a4a2a');
-    px(ctx, 30, 17, 6, 1, '#6a4a2a');
+    const { c, ctx } = makeCanvas(48, 42);
+    // walls with timber frame
+    px(ctx, 4, 18, 40, 24, '#d8b888');
+    px(ctx, 4, 18, 40, 1, '#b89868');
+    px(ctx, 4, 18, 1, 24, '#b89868');
+    px(ctx, 43, 18, 1, 24, '#a88858');
+    // timber beams
+    px(ctx, 14, 18, 1, 24, '#7a5a34');
+    px(ctx, 33, 18, 1, 24, '#7a5a34');
+    px(ctx, 4, 28, 40, 1, '#7a5a34');
+    // roof with shingle rows
+    px(ctx, 1, 8, 46, 11, '#8a2820');
+    px(ctx, 5, 4, 38, 5, '#9a3428');
+    px(ctx, 9, 1, 30, 4, '#a84030');
+    px(ctx, 1, 11, 46, 1, '#701c16');          // shingle lines
+    px(ctx, 3, 15, 43, 1, '#701c16');
+    px(ctx, 7, 7, 35, 1, '#88281e');
+    px(ctx, 1, 17, 46, 2, '#5a1410');          // roof edge
+    // chimney
+    px(ctx, 36, 0, 5, 8, '#8a8a92');
+    px(ctx, 35, 0, 7, 2, '#72727c');
+    // arched door
+    px(ctx, 20, 30, 8, 12, '#5a3a1a');
+    px(ctx, 21, 28, 6, 3, '#5a3a1a');
+    px(ctx, 21, 29, 1, 12, '#7a5535');         // door plank lines
+    px(ctx, 24, 29, 1, 13, '#42280e');
+    px(ctx, 26, 35, 1, 2, '#c8a030');          // handle
+    // glowing windows with frames
+    px(ctx, 8, 21, 7, 6, '#6a4a2a');
+    px(ctx, 9, 22, 5, 4, '#ffd870');
+    px(ctx, 11, 22, 1, 4, '#6a4a2a');
+    px(ctx, 34, 21, 7, 6, '#6a4a2a');
+    px(ctx, 35, 22, 5, 4, '#ffd870');
+    px(ctx, 37, 22, 1, 4, '#6a4a2a');
     result = c;
   } else if (kind === 'portal') {
-    const { c, ctx } = makeCanvas(20, 26);
-    px(ctx, 2, 2, 16, 22, '#7733bb');
-    px(ctx, 4, 4, 12, 18, '#aa66ff');
-    px(ctx, 6, 6, 8, 14, '#ddbbff');
-    px(ctx, 8, 9, 4, 8, '#ffffff');
+    const { c, ctx } = makeCanvas(22, 30);
+    // stone arch frame
+    px(ctx, 1, 2, 4, 26, '#6e6e78');
+    px(ctx, 17, 2, 4, 26, '#6e6e78');
+    px(ctx, 1, 0, 20, 4, '#7e7e88');
+    px(ctx, 2, 1, 2, 2, '#92929c');
+    px(ctx, 1, 26, 5, 2, '#5a5a64');
+    px(ctx, 16, 26, 5, 2, '#5a5a64');
+    // swirling energy
+    px(ctx, 5, 4, 12, 24, '#5a2a9a');
+    px(ctx, 6, 6, 10, 20, '#8848dd');
+    px(ctx, 8, 8, 6, 16, '#b880ff');
+    px(ctx, 9, 11, 4, 9, '#e0ccff');
+    px(ctx, 10, 13, 2, 5, '#ffffff');
+    px(ctx, 7, 9, 2, 2, '#d0b0ff');           // swirl sparks
+    px(ctx, 13, 19, 2, 2, '#d0b0ff');
     result = c;
   } else if (kind === 'torch') {
-    const { c, ctx } = makeCanvas(6, 16);
-    px(ctx, 2, 6, 2, 10, '#6a4a2a');
-    px(ctx, 1, 4, 4, 3, '#444444');
-    px(ctx, 1, 1, 4, 4, '#ff8820');
-    px(ctx, 2, 0, 2, 3, '#ffcc40');
+    const { c, ctx } = makeCanvas(8, 18);
+    px(ctx, 3, 7, 2, 11, '#6a4a2a');
+    px(ctx, 3, 7, 1, 11, '#8a6540');
+    px(ctx, 2, 5, 4, 3, '#4a4a52');            // iron holder
+    px(ctx, 2, 5, 4, 1, '#5e5e66');
+    px(ctx, 2, 2, 4, 4, '#ff8820');            // flame
+    px(ctx, 3, 0, 2, 4, '#ffcc40');
+    px(ctx, 3, 1, 1, 2, '#fff0a0');            // flame core
     result = c;
   }
 
@@ -859,15 +967,17 @@ function buildWorld() {
   worldObjects.push({ kind: 'portal', x: 0, z: 200, name: 'Kundun Lair' });
   worldObjects.push({ kind: 'portal', x: 150, z: 0, name: 'Death Knight Arena' });
 
-  // Trees - deterministic positions (few, as requested)
+  // Trees - deterministic positions (oak + pine mix)
   let seed = 12345;
   const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const clearOfLakes = (x, z, pad) => !lakes.some(l => Math.hypot(x - l.x, z - l.z) < l.r + pad);
+
   for (let i = 0; i < 60; i++) {
     const x = (rand() - 0.5) * 440;
     const z = (rand() - 0.5) * 440;
     if (Math.abs(x) < 40 && Math.abs(z) < 40) continue;         // keep town clear
-    if (lakes.some(l => Math.hypot(x - l.x, z - l.z) < l.r + 6)) continue;
-    worldObjects.push({ kind: 'tree', x, z });
+    if (!clearOfLakes(x, z, 6)) continue;
+    worldObjects.push({ kind: rand() > 0.4 ? 'tree' : 'pine', x, z });
   }
 
   // Rocks
@@ -875,8 +985,34 @@ function buildWorld() {
     const x = (rand() - 0.5) * 400;
     const z = (rand() - 0.5) * 400;
     if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
-    if (lakes.some(l => Math.hypot(x - l.x, z - l.z) < l.r + 4)) continue;
+    if (!clearOfLakes(x, z, 4)) continue;
     worldObjects.push({ kind: 'rock', x, z });
+  }
+
+  // Bushes
+  for (let i = 0; i < 30; i++) {
+    const x = (rand() - 0.5) * 430;
+    const z = (rand() - 0.5) * 430;
+    if (Math.abs(x) < 34 && Math.abs(z) < 34) continue;
+    if (!clearOfLakes(x, z, 4)) continue;
+    worldObjects.push({ kind: 'bush', x, z });
+  }
+
+  // Flower patches
+  for (let i = 0; i < 40; i++) {
+    const x = (rand() - 0.5) * 440;
+    const z = (rand() - 0.5) * 440;
+    if (!clearOfLakes(x, z, 3)) continue;
+    worldObjects.push({ kind: 'flowers', x, z });
+  }
+
+  // Mushrooms (near woods)
+  for (let i = 0; i < 14; i++) {
+    const x = (rand() - 0.5) * 420;
+    const z = (rand() - 0.5) * 420;
+    if (Math.abs(x) < 36 && Math.abs(z) < 36) continue;
+    if (!clearOfLakes(x, z, 3)) continue;
+    worldObjects.push({ kind: 'mushroom', x, z });
   }
 
   // Torches around town
@@ -1582,6 +1718,14 @@ function drawObject(ctx, obj) {
 
   if (s.x + w < 0 || s.x - w > game.canvas.width || s.y + h < 0 || s.y - h > game.canvas.height) return;
 
+  // soft ground shadow under solid objects
+  if (obj.kind === 'tree' || obj.kind === 'pine' || obj.kind === 'rock' || obj.kind === 'building' || obj.kind === 'bush') {
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(s.x, s.y - 1, w * 0.42, w * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // portal glow animation
   if (obj.kind === 'portal') {
     const pulse = Math.sin(game.time * 4) * 0.2 + 0.5;
@@ -1805,6 +1949,22 @@ function drawEffects(ctx) {
       ctx.fillStyle = ef.color;
       ctx.beginPath();
       ctx.ellipse(s.x, botY, 22 * sc * (1 - p), 8 * sc * (1 - p), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+    } else if (ef.type === 'clickMarker') {
+      // shrinking ring on the ground where the player clicked
+      const s = worldToScreen(ef.x, ef.z);
+      const R = (1 - p) * 18 * sc + 4;
+      ctx.globalAlpha = 1 - p * 0.6;
+      ctx.strokeStyle = '#7dff7d';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y, R, R * 0.45, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#7dff7d';
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y, 3, 1.5, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
 
@@ -2059,11 +2219,19 @@ function handleClick(sx, sy) {
   game.players.forEach(p => testEntity(p, 'player'));
 
   if (best) {
-    // Clicking an already-selected target performs a basic attack
-    if (game.selectedTarget && game.selectedTarget.id === best.ent.id) {
-      useBasicAttack();
-    } else {
-      selectTarget({ type: best.type, id: best.ent.id });
+    selectTarget({ type: best.type, id: best.ent.id });
+    if (best.type === 'npc') {
+      // approach the monster and melee attack when in range
+      game.chaseTargetId = best.ent.id;
+      game.moveTarget = null;
+    }
+  } else {
+    // ground click: walk there
+    const w = screenToWorld(sx, sy);
+    if (Math.abs(w.x) <= 245 && Math.abs(w.z) <= 245) {
+      game.moveTarget = { x: w.x, z: w.z };
+      game.chaseTargetId = null;
+      game.effects.push({ type: 'clickMarker', x: w.x, z: w.z, t: 0, dur: 0.6 });
     }
   }
 }
@@ -2191,12 +2359,49 @@ function setupMobileControls() {
     });
   }
 
-  // Touch to select target
+  // Touch: select monster / walk to tapped point
   game.canvas.addEventListener('touchstart', (e) => {
     if (e.target !== game.canvas) return;
     const touch = e.touches[0];
     handleClick(touch.clientX, touch.clientY);
   }, { passive: true });
+}
+
+// Shared movement helper: walk toward a world point, returns remaining distance
+function stepToward(tx, tz, delta) {
+  const dx = tx - game.player.position.x;
+  const dz = tz - game.player.position.z;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 0.01) return 0;
+
+  const speed = game.moveSpeed * (game.player.stats?.moveSpeed || 1);
+  const step = Math.min(speed * delta, dist);
+  const nx = game.player.position.x + (dx / dist) * step;
+  const nz = game.player.position.z + (dz / dist) * step;
+
+  let movedX = false, movedZ = false;
+  if (!isBlocked(nx, game.player.position.z)) {
+    game.player.position.x = nx;
+    movedX = true;
+  }
+  if (!isBlocked(game.player.position.x, nz)) {
+    game.player.position.z = nz;
+    movedZ = true;
+  }
+
+  if (movedX || movedZ) {
+    game.player.facing = getFacing(dx, dz);
+    game.player.moving = true;
+    game.player.animPhase = (game.player.animPhase || 0) + delta * 10;
+    game.player.rotation = Math.atan2(dx, dz);
+    game.socket.emit('playerMove', {
+      position: game.player.position,
+      rotation: game.player.rotation,
+      velocity: { x: (dx / dist) * speed, y: 0, z: (dz / dist) * speed }
+    });
+    return dist - step;
+  }
+  return -1; // blocked
 }
 
 // ============================================================
@@ -2279,6 +2484,19 @@ function useSkill(index) {
 let lastBasicAttack = 0;
 function useBasicAttack() {
   if (!game.selectedTarget || game.selectedTarget.dead) return;
+
+  // melee only: if too far, run toward the target first
+  const dist = Math.hypot(
+    game.selectedTarget.position.x - game.player.position.x,
+    game.selectedTarget.position.z - game.player.position.z
+  );
+  if (dist > MELEE_RANGE) {
+    if (game.selectedTarget.targetType === 'npc') {
+      game.chaseTargetId = game.selectedTarget.id;
+      game.moveTarget = null;
+    }
+    return;
+  }
 
   const now = Date.now();
   if (now - lastBasicAttack < 1000) return;
@@ -2889,6 +3107,10 @@ function gameLoop() {
     if (game.keys['KeyD'] || game.keys['ArrowRight']) moveX += 1;
 
     if (moveX !== 0 || moveZ !== 0) {
+      // manual movement cancels click-to-move and chase
+      game.moveTarget = null;
+      game.chaseTargetId = null;
+
       const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
       moveX /= length;
       moveZ /= length;
@@ -2915,6 +3137,45 @@ function gameLoop() {
         rotation: game.player.rotation,
         velocity: { x: moveX * speed, y: 0, z: moveZ * speed }
       });
+    } else if (game.chaseTargetId) {
+      // chase a monster and melee it when close enough
+      const npc = game.npcs.get(game.chaseTargetId);
+      if (!npc || npc.dead) {
+        game.chaseTargetId = null;
+        game.player.moving = false;
+      } else {
+        const dist = Math.hypot(
+          npc.position.x - game.player.position.x,
+          npc.position.z - game.player.position.z
+        );
+        if (dist > MELEE_RANGE * 0.85) {
+          const res = stepToward(npc.position.x, npc.position.z, delta);
+          if (res === -1) {
+            // path blocked - stop chasing
+            game.chaseTargetId = null;
+            game.player.moving = false;
+          }
+        } else {
+          // in melee range: face it and auto basic attack
+          game.player.moving = false;
+          const dx = npc.position.x - game.player.position.x;
+          const dz = npc.position.z - game.player.position.z;
+          if (Math.abs(dx) + Math.abs(dz) > 0.1) {
+            game.player.facing = getFacing(dx, dz);
+          }
+          if (game.selectedTarget?.id !== npc.id) {
+            selectTarget({ type: 'npc', id: npc.id });
+          }
+          useBasicAttack();
+        }
+      }
+    } else if (game.moveTarget) {
+      // click-to-move
+      const res = stepToward(game.moveTarget.x, game.moveTarget.z, delta);
+      if (res === -1 || res < 0.4) {
+        game.moveTarget = null;
+        game.player.moving = false;
+      }
     } else {
       game.player.moving = false;
     }

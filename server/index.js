@@ -893,6 +893,16 @@ io.on('connection', (socket) => {
 
     if (!target) return;
 
+    // Basic attack is melee only - same close range where the enemy hits back
+    if (!data.skill) {
+      const ddx = target.position.x - player.position.x;
+      const ddz = target.position.z - player.position.z;
+      if (Math.hypot(ddx, ddz) > 3.5) {
+        socket.emit('combatError', { error: 'Target out of melee range' });
+        return;
+      }
+    }
+
     const result = handleCombat(player, target, data.skill);
 
     if (result && !result.error) {
