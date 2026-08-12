@@ -112,13 +112,14 @@ function outlineSprite(src) {
   return c;
 }
 
-// Class visual definitions
+// Class visual definitions - rustic medieval look based on reference art:
+// laced tunic, leather belt with buckle, dark trousers, worn leather boots
 const classLooks = {
-  darkKnight: { tunic: '#a02020', pants: '#5a1010', hair: '#3a2a1a', helmet: '#777788' },
-  darkWizard: { tunic: '#5a3a9a', pants: '#2a1a4a', hair: '#e0e0e0', hat: '#33206a' },
-  fairyElf: { tunic: '#2a8a3a', pants: '#1a5a2a', hair: '#e8c860' },
-  bicheon: { tunic: '#c07818', pants: '#6a4010', hair: '#101010' },
-  heuksal: { tunic: '#6a2a8a', pants: '#2a1040', hair: '#3a1a5a' }
+  darkKnight: { tunic: '#c9b795', pants: '#4c443a', hair: '#4a3520' },
+  darkWizard: { tunic: '#4a3a7a', pants: '#2a2348', hair: '#b8b8c0', hat: '#332a5a' },
+  fairyElf: { tunic: '#5a8a3a', pants: '#3a5a28', hair: '#d8c060' },
+  bicheon: { tunic: '#b87828', pants: '#5a4020', hair: '#181818' },
+  heuksal: { tunic: '#41284f', pants: '#221830', hair: '#2a1a3a' }
 };
 
 // Outfit visual overrides (dropped costumes)
@@ -129,24 +130,35 @@ const outfitLooks = {
   shadow: { tunic: '#181828', pants: '#0c0c18', hood: '#282840', glow: '#8844ff' }
 };
 
-const SKIN = '#f0c8a0';
-const BOOTS = '#3a2a1a';
+const SKIN = '#e2b285';
+const SKIN_SHADE = '#c69a6e';
+const BOOTS = '#6a4a28';
+const BOOTS_DARK = '#4a3018';
+const BELT = '#5a3a1e';
+const BUCKLE = '#c8a030';
+const BRACER = '#7a5230';
 
-// Character sprite: 16x22 logical pixels, 4 directions
-function getCharacterSprite(cls, outfitId, dir) {
-  const key = `char|${cls}|${outfitId || ''}|${dir}`;
+// Character sprite: 24x34 logical pixels, 4 directions, male/female.
+// Design based on reference art: laced tunic, leather belt with buckle,
+// rolled-up sleeves with wrist bracers, dark trousers, worn leather boots.
+const CHAR_W = 24;
+const CHAR_H = 34;
+
+function getCharacterSprite(cls, outfitId, dir, gender) {
+  const g = gender === 'female' ? 'f' : 'm';
+  const key = `char|${cls}|${outfitId || ''}|${dir}|${g}`;
   if (spriteCache.has(key)) return spriteCache.get(key);
 
   const look = { ...(classLooks[cls] || classLooks.darkKnight) };
   if (outfitId && outfitLooks[outfitId]) Object.assign(look, outfitLooks[outfitId]);
+  const female = g === 'f';
 
-  const { c, ctx } = makeCanvas(16, 22);
+  const { c, ctx } = makeCanvas(CHAR_W, CHAR_H);
 
   if (dir === 'left' || dir === 'right') {
-    drawCharSide(ctx, cls, look);
+    drawCharSide(ctx, cls, look, female);
     if (dir === 'right') {
-      // mirror
-      const { c: mc, ctx: mctx } = makeCanvas(16, 22);
+      const { c: mc, ctx: mctx } = makeCanvas(CHAR_W, CHAR_H);
       mctx.translate(mc.width, 0);
       mctx.scale(-1, 1);
       mctx.drawImage(c, 0, 0);
@@ -155,9 +167,9 @@ function getCharacterSprite(cls, outfitId, dir) {
       return outlinedM;
     }
   } else if (dir === 'up') {
-    drawCharBack(ctx, cls, look);
+    drawCharBack(ctx, cls, look, female);
   } else {
-    drawCharFront(ctx, cls, look);
+    drawCharFront(ctx, cls, look, female);
   }
 
   const outlined = outlineSprite(c);
@@ -165,98 +177,278 @@ function getCharacterSprite(cls, outfitId, dir) {
   return outlined;
 }
 
-function drawHeadgear(ctx, look, xOff = 0) {
+function shadeColor(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+  const b = Math.max(0, Math.min(255, (n & 255) + amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+// Headgear / hair for the front view
+function drawHairFront(ctx, look, female) {
+  const hairDark = shadeColor(look.hair || '#4a3520', -25);
   if (look.helmet) {
-    px(ctx, 4 + xOff, 0, 8, 4, look.helmet);
-    px(ctx, 5 + xOff, 4, 6, 1, look.helmet);
+    px(ctx, 8, 0, 8, 5, look.helmet);
+    px(ctx, 7, 2, 1, 3, look.helmet);
+    px(ctx, 16, 2, 1, 3, look.helmet);
+    px(ctx, 9, 1, 3, 1, shadeColor(look.helmet, 30));
   } else if (look.hat) {
-    px(ctx, 6 + xOff, -0, 4, 2, look.hat);
-    px(ctx, 3 + xOff, 2, 10, 2, look.hat);
+    px(ctx, 10, 0, 4, 2, look.hat);
+    px(ctx, 9, 1, 6, 2, look.hat);
+    px(ctx, 7, 3, 10, 1, look.hat);
+    px(ctx, 8, 4, 8, 1, shadeColor(look.hat, -20));
   } else if (look.hood) {
-    px(ctx, 4 + xOff, 0, 8, 5, look.hood);
+    px(ctx, 8, 0, 8, 5, look.hood);
+    px(ctx, 7, 2, 1, 4, look.hood);
+    px(ctx, 16, 2, 1, 4, look.hood);
   } else if (look.crown) {
-    px(ctx, 5 + xOff, 0, 6, 2, look.crown);
-    px(ctx, 4 + xOff, 1, 8, 1, look.hair);
+    px(ctx, 9, 0, 6, 1, look.crown);
+    px(ctx, 9, 1, 1, 1, look.crown);
+    px(ctx, 11, 1, 1, 1, look.crown);
+    px(ctx, 14, 1, 1, 1, look.crown);
+    px(ctx, 8, 2, 8, 2, look.hair);
   } else {
-    px(ctx, 4 + xOff, 0, 8, 3, look.hair);
+    // messy hair like the reference
+    px(ctx, 9, 0, 6, 1, look.hair);
+    px(ctx, 8, 1, 8, 2, look.hair);
+    px(ctx, 8, 3, 2, 1, look.hair);
+    px(ctx, 14, 3, 2, 1, look.hair);
+    px(ctx, 10, 0, 1, 1, hairDark);
+    px(ctx, 13, 1, 1, 1, hairDark);
+  }
+  if (female && !look.helmet && !look.hood) {
+    // long hair falling on the sides
+    px(ctx, 7, 2, 1, 11, look.hair);
+    px(ctx, 6, 4, 1, 8, look.hair);
+    px(ctx, 16, 2, 1, 11, look.hair);
+    px(ctx, 17, 4, 1, 8, look.hair);
   }
 }
 
-function drawCharFront(ctx, cls, look) {
-  // head
-  px(ctx, 5, 1, 6, 5, SKIN);
-  drawHeadgear(ctx, look);
-  // eyes
-  px(ctx, 6, 4, 1, 1, '#181818');
-  px(ctx, 9, 4, 1, 1, '#181818');
-  // body
-  px(ctx, 4, 6, 8, 7, look.tunic);
-  // belt
-  px(ctx, 4, 12, 8, 1, '#2a2016');
-  // arms
-  px(ctx, 3, 7, 1, 5, look.tunic);
-  px(ctx, 12, 7, 1, 5, look.tunic);
-  px(ctx, 3, 12, 1, 1, SKIN);
-  px(ctx, 12, 12, 1, 1, SKIN);
-  // legs
-  px(ctx, 5, 13, 2, 6, look.pants);
-  px(ctx, 9, 13, 2, 6, look.pants);
-  // boots
-  px(ctx, 5, 19, 2, 2, BOOTS);
-  px(ctx, 9, 19, 2, 2, BOOTS);
-  // weapon
+function drawCharFront(ctx, cls, look, female) {
+  const tunicDark = shadeColor(look.tunic, -22);
+  const pantsDark = shadeColor(look.pants, -18);
+  const hairC = look.hair || '#4a3520';
+
+  // ---- head ----
+  px(ctx, 9, 2, 6, 7, SKIN);
+  px(ctx, 8, 4, 1, 4, SKIN);
+  px(ctx, 15, 4, 1, 4, SKIN);
+  drawHairFront(ctx, look, female);
+  // eyes (looking down slightly, like the reference)
+  px(ctx, 10, 5, 1, 1, '#2a1a10');
+  px(ctx, 13, 5, 1, 1, '#2a1a10');
+  // nose shadow
+  px(ctx, 11, 6, 1, 1, SKIN_SHADE);
+  // beard for males (like reference), soft chin shade for females
+  if (!female && !look.helmet) {
+    px(ctx, 9, 7, 6, 2, hairC);
+    px(ctx, 10, 7, 4, 1, shadeColor(hairC, -15));
+    px(ctx, 11, 7, 2, 1, SKIN_SHADE); // mouth area
+  } else {
+    px(ctx, 10, 8, 4, 1, SKIN_SHADE);
+  }
+  // neck
+  px(ctx, 10, 9, 4, 1, SKIN_SHADE);
+
+  // ---- torso: tunic ----
+  const tx = female ? 8 : 7;
+  const tw = female ? 8 : 10;
+  px(ctx, tx - 1, 10, tw + 2, 2, look.tunic);          // shoulders
+  px(ctx, tx, 10, tw, 8, look.tunic);                  // chest
+  px(ctx, tx + tw - 1, 11, 1, 7, tunicDark);           // side shading
+  // V-neck lacing
+  px(ctx, 11, 10, 2, 1, SKIN_SHADE);
+  px(ctx, 11, 11, 2, 3, tunicDark);
+  px(ctx, 11, 11, 1, 1, '#8a7a5a');
+  px(ctx, 12, 12, 1, 1, '#8a7a5a');
+  px(ctx, 11, 13, 1, 1, '#8a7a5a');
+  // waist pinch for female
+  if (female) {
+    px(ctx, 8, 15, 1, 3, tunicDark);
+    px(ctx, 15, 15, 1, 3, tunicDark);
+  }
+
+  // ---- arms: rolled sleeves, bare forearms, bracers ----
+  const armL = tx - 2, armR = tx + tw;
+  px(ctx, armL, 11, 2, 5, look.tunic);      // left sleeve
+  px(ctx, armR, 11, 2, 5, look.tunic);      // right sleeve
+  px(ctx, armL, 15, 2, 1, tunicDark);       // rolled cuff
+  px(ctx, armR, 15, 2, 1, tunicDark);
+  px(ctx, armL, 16, 2, 3, SKIN);            // forearms
+  px(ctx, armR, 16, 2, 3, SKIN);
+  px(ctx, armL, 17, 2, 2, BRACER);          // wrist bracers
+  px(ctx, armR, 17, 2, 2, BRACER);
+  px(ctx, armL, 19, 2, 2, SKIN);            // hands
+  px(ctx, armR, 19, 2, 2, SKIN);
+
+  // ---- belt with buckle ----
+  px(ctx, tx, 18, tw, 2, BELT);
+  px(ctx, 11, 18, 2, 2, BUCKLE);
+  px(ctx, 11, 18, 1, 1, shadeColor(BUCKLE, 40));
+  // tunic hem below the belt
+  px(ctx, tx, 20, tw, 2, look.tunic);
+  px(ctx, tx, 21, tw, 1, tunicDark);
+
+  // ---- legs ----
+  px(ctx, 8, 22, 3, 6, look.pants);
+  px(ctx, 13, 22, 3, 6, look.pants);
+  px(ctx, 10, 22, 1, 5, pantsDark);
+  px(ctx, 13, 22, 1, 5, pantsDark);
+
+  // ---- boots ----
+  px(ctx, 8, 28, 3, 3, BOOTS);
+  px(ctx, 13, 28, 3, 3, BOOTS);
+  px(ctx, 7, 31, 4, 2, BOOTS);
+  px(ctx, 13, 31, 4, 2, BOOTS);
+  px(ctx, 7, 33, 4, 1, BOOTS_DARK);
+  px(ctx, 13, 33, 4, 1, BOOTS_DARK);
+  px(ctx, 8, 29, 1, 1, BOOTS_DARK);   // lace hints
+  px(ctx, 14, 29, 1, 1, BOOTS_DARK);
+
   drawWeapon(ctx, cls, 'front');
-  // outfit glow accents
+
   if (look.glow) {
-    px(ctx, 4, 6, 1, 7, look.glow);
-    px(ctx, 11, 6, 1, 7, look.glow);
+    px(ctx, tx, 10, 1, 10, look.glow);
+    px(ctx, tx + tw - 1, 10, 1, 10, look.glow);
   }
 }
 
-function drawCharBack(ctx, cls, look) {
-  // head (no face)
-  px(ctx, 5, 1, 6, 5, SKIN);
-  drawHeadgear(ctx, look);
-  px(ctx, 5, 3, 6, 3, look.hood || look.helmet || look.hair); // hair covers back
-  // body
-  px(ctx, 4, 6, 8, 7, look.tunic);
-  px(ctx, 4, 12, 8, 1, '#2a2016');
-  // arms
-  px(ctx, 3, 7, 1, 5, look.tunic);
-  px(ctx, 12, 7, 1, 5, look.tunic);
-  // legs
-  px(ctx, 5, 13, 2, 6, look.pants);
-  px(ctx, 9, 13, 2, 6, look.pants);
-  px(ctx, 5, 19, 2, 2, BOOTS);
-  px(ctx, 9, 19, 2, 2, BOOTS);
+function drawCharBack(ctx, cls, look, female) {
+  const tunicDark = shadeColor(look.tunic, -22);
+  const pantsDark = shadeColor(look.pants, -18);
+  const hairC = look.hood || look.helmet || look.hair || '#4a3520';
+
+  // head covered by hair/hood from behind
+  px(ctx, 9, 2, 6, 7, hairC);
+  px(ctx, 8, 3, 1, 5, hairC);
+  px(ctx, 15, 3, 1, 5, hairC);
+  px(ctx, 9, 0, 6, 2, hairC);
+  if (female && !look.helmet && !look.hood) {
+    // long hair down the back
+    px(ctx, 9, 9, 6, 5, look.hair);
+    px(ctx, 10, 14, 4, 2, look.hair);
+    px(ctx, 10, 15, 4, 1, shadeColor(look.hair, -25));
+  }
+  px(ctx, 10, 9, 4, 1, SKIN_SHADE);
+
+  const tx = female ? 8 : 7;
+  const tw = female ? 8 : 10;
+  px(ctx, tx - 1, 10, tw + 2, 2, look.tunic);
+  px(ctx, tx, 10, tw, 8, look.tunic);
+  px(ctx, tx, 11, 1, 7, tunicDark);
+  if (female) {
+    px(ctx, 8, 15, 1, 3, tunicDark);
+    px(ctx, 15, 15, 1, 3, tunicDark);
+  }
+
+  const armL = tx - 2, armR = tx + tw;
+  px(ctx, armL, 11, 2, 5, look.tunic);
+  px(ctx, armR, 11, 2, 5, look.tunic);
+  px(ctx, armL, 15, 2, 1, tunicDark);
+  px(ctx, armR, 15, 2, 1, tunicDark);
+  px(ctx, armL, 16, 2, 3, SKIN);
+  px(ctx, armR, 16, 2, 3, SKIN);
+  px(ctx, armL, 17, 2, 2, BRACER);
+  px(ctx, armR, 17, 2, 2, BRACER);
+  px(ctx, armL, 19, 2, 2, SKIN);
+  px(ctx, armR, 19, 2, 2, SKIN);
+
+  // plain belt (no buckle from behind)
+  px(ctx, tx, 18, tw, 2, BELT);
+  px(ctx, tx, 20, tw, 2, look.tunic);
+  px(ctx, tx, 21, tw, 1, tunicDark);
+
+  px(ctx, 8, 22, 3, 6, look.pants);
+  px(ctx, 13, 22, 3, 6, look.pants);
+  px(ctx, 8, 22, 1, 5, pantsDark);
+  px(ctx, 15, 22, 1, 5, pantsDark);
+
+  px(ctx, 8, 28, 3, 3, BOOTS);
+  px(ctx, 13, 28, 3, 3, BOOTS);
+  px(ctx, 7, 31, 4, 2, BOOTS);
+  px(ctx, 13, 31, 4, 2, BOOTS);
+  px(ctx, 7, 33, 4, 1, BOOTS_DARK);
+  px(ctx, 13, 33, 4, 1, BOOTS_DARK);
+
   drawWeapon(ctx, cls, 'back');
+
   if (look.glow) {
-    px(ctx, 4, 6, 1, 7, look.glow);
-    px(ctx, 11, 6, 1, 7, look.glow);
+    px(ctx, tx, 10, 1, 10, look.glow);
+    px(ctx, tx + tw - 1, 10, 1, 10, look.glow);
   }
 }
 
-function drawCharSide(ctx, cls, look) {
+function drawCharSide(ctx, cls, look, female) {
   // facing LEFT
-  // head
-  px(ctx, 5, 1, 6, 5, SKIN);
-  drawHeadgear(ctx, look);
-  // one eye
-  px(ctx, 6, 4, 1, 1, '#181818');
-  // body (narrower)
-  px(ctx, 5, 6, 6, 7, look.tunic);
-  px(ctx, 5, 12, 6, 1, '#2a2016');
+  const tunicDark = shadeColor(look.tunic, -22);
+  const pantsDark = shadeColor(look.pants, -18);
+  const hairC = look.hair || '#4a3520';
+
+  // ---- head ----
+  px(ctx, 9, 2, 6, 7, SKIN);
+  // hair covering top and back of head
+  if (look.helmet) {
+    px(ctx, 8, 0, 8, 5, look.helmet);
+  } else if (look.hood) {
+    px(ctx, 8, 0, 8, 6, look.hood);
+    px(ctx, 13, 6, 3, 3, look.hood);
+  } else if (look.hat) {
+    px(ctx, 10, 0, 5, 2, look.hat);
+    px(ctx, 8, 2, 9, 2, look.hat);
+  } else {
+    px(ctx, 9, 0, 7, 2, hairC);
+    px(ctx, 10, 2, 6, 2, hairC);
+    px(ctx, 13, 4, 3, 4, hairC);   // back of head
+  }
+  if (female && !look.helmet && !look.hood) {
+    px(ctx, 14, 6, 2, 9, look.hair); // long hair down the back
+    px(ctx, 15, 14, 1, 2, shadeColor(look.hair, -25));
+  }
+  // one eye + beard on the chin
+  px(ctx, 10, 5, 1, 1, '#2a1a10');
+  if (!female && !look.helmet) {
+    px(ctx, 9, 7, 4, 2, hairC);
+  }
+  px(ctx, 11, 9, 3, 1, SKIN_SHADE);
+
+  // ---- body ----
+  px(ctx, 9, 10, 7, 8, look.tunic);
+  px(ctx, 15, 11, 1, 7, tunicDark);
+  if (female) {
+    px(ctx, 9, 15, 1, 3, tunicDark);
+    px(ctx, 14, 15, 1, 3, tunicDark);
+  }
+
   // front arm
-  px(ctx, 4, 7, 1, 5, look.tunic);
-  px(ctx, 4, 12, 1, 1, SKIN);
-  // legs
-  px(ctx, 6, 13, 2, 6, look.pants);
-  px(ctx, 8, 13, 2, 6, look.pants);
-  px(ctx, 6, 19, 2, 2, BOOTS);
-  px(ctx, 8, 19, 2, 2, BOOTS);
+  px(ctx, 7, 11, 2, 5, look.tunic);
+  px(ctx, 7, 15, 2, 1, tunicDark);
+  px(ctx, 7, 16, 2, 3, SKIN);
+  px(ctx, 7, 17, 2, 2, BRACER);
+  px(ctx, 7, 19, 2, 2, SKIN);
+
+  // belt
+  px(ctx, 9, 18, 7, 2, BELT);
+  px(ctx, 9, 20, 7, 2, look.tunic);
+  px(ctx, 9, 21, 7, 1, tunicDark);
+
+  // legs (one slightly forward)
+  px(ctx, 9, 22, 3, 6, look.pants);
+  px(ctx, 12, 22, 3, 6, pantsDark);
+
+  // boots with forward toes
+  px(ctx, 9, 28, 3, 3, BOOTS);
+  px(ctx, 12, 28, 3, 3, shadeColor(BOOTS, -12));
+  px(ctx, 7, 31, 5, 2, BOOTS);
+  px(ctx, 12, 31, 4, 2, shadeColor(BOOTS, -12));
+  px(ctx, 7, 33, 5, 1, BOOTS_DARK);
+  px(ctx, 12, 33, 4, 1, BOOTS_DARK);
+
   drawWeapon(ctx, cls, 'side');
+
   if (look.glow) {
-    px(ctx, 5, 6, 1, 7, look.glow);
+    px(ctx, 9, 10, 1, 10, look.glow);
   }
 }
 
@@ -264,26 +456,34 @@ function drawWeapon(ctx, cls, view) {
   const isSword = (cls === 'darkKnight' || cls === 'bicheon');
   if (isSword) {
     if (view === 'side') {
-      px(ctx, 1, 5, 1, 8, '#c8c8d0');
-      px(ctx, 0, 12, 3, 1, '#8a6a20');
+      px(ctx, 3, 8, 1, 13, '#c8c8d0');
+      px(ctx, 3, 8, 1, 2, '#e8e8f0');
+      px(ctx, 2, 19, 3, 1, '#8a6a20');
+      px(ctx, 3, 20, 1, 2, '#5a3a1a');
     } else {
-      const x = view === 'back' ? 2 : 13;
-      px(ctx, x, 4, 1, 9, '#c8c8d0');
-      px(ctx, x - 1, 12, 3, 1, '#8a6a20');
+      const x = view === 'back' ? 4 : 19;
+      px(ctx, x, 7, 1, 12, '#c8c8d0');
+      px(ctx, x, 7, 1, 2, '#e8e8f0');
+      px(ctx, x - 1, 18, 3, 1, '#8a6a20');
+      px(ctx, x, 19, 1, 2, '#5a3a1a');
     }
   } else if (cls === 'darkWizard') {
-    const x = view === 'side' ? 1 : (view === 'back' ? 2 : 13);
-    px(ctx, x, 3, 1, 12, '#6a4a20');
-    px(ctx, x - 1, 1, 3, 3, '#aa66ff');
+    const x = view === 'side' ? 3 : (view === 'back' ? 4 : 19);
+    px(ctx, x, 5, 1, 18, '#6a4a20');
+    px(ctx, x - 1, 2, 3, 3, '#aa66ff');
+    px(ctx, x, 3, 1, 1, '#e0ccff');
   } else if (cls === 'fairyElf') {
-    const x = view === 'side' ? 1 : (view === 'back' ? 2 : 13);
-    px(ctx, x, 4, 1, 8, '#8a6a30');
-    px(ctx, x - 1, 4, 1, 1, '#8a6a30');
-    px(ctx, x - 1, 11, 1, 1, '#8a6a30');
+    const x = view === 'side' ? 3 : (view === 'back' ? 4 : 19);
+    px(ctx, x, 7, 1, 12, '#8a6a30');
+    px(ctx, x - 1, 6, 1, 2, '#8a6a30');
+    px(ctx, x - 1, 18, 1, 2, '#8a6a30');
+    px(ctx, x + 1, 8, 1, 10, '#d8d8c0'); // bowstring
   } else if (cls === 'heuksal') {
     if (view !== 'back') {
-      const x = view === 'side' ? 2 : 13;
-      px(ctx, x, 8, 1, 4, '#b0b0b8');
+      const x = view === 'side' ? 4 : 19;
+      px(ctx, x, 14, 1, 6, '#b0b0b8');
+      px(ctx, x, 14, 1, 1, '#e0e0e8');
+      px(ctx, x - 1, 19, 3, 1, '#3a2a1a');
     }
   }
 }
@@ -1055,9 +1255,9 @@ function updateEntityFacing(ent, dt) {
 function drawCharacter(ctx, ent, isLocal) {
   const s = worldToScreen(ent.position.x, ent.position.z);
   const outfitId = ent.equipment?.outfit?.outfitId || null;
-  const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down');
+  const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down', ent.gender);
 
-  const scale = (game.zoom / 14) * 1.3;
+  const scale = (game.zoom / 14) * 0.95;
   const w = sprite.width * scale;
   const h = sprite.height * scale;
   const bob = ent.moving ? Math.sin(ent.animPhase * 2) * 2 * scale : 0;
@@ -2482,12 +2682,21 @@ function gameLoop() {
 function setupLoginScreen() {
   const classOptions = document.querySelectorAll('.class-option');
   let selectedClass = 'darkKnight';
+  let selectedGender = 'male';
 
   classOptions.forEach(option => {
     option.addEventListener('click', () => {
       classOptions.forEach(o => o.classList.remove('selected'));
       option.classList.add('selected');
       selectedClass = option.dataset.class;
+    });
+  });
+
+  document.querySelectorAll('.gender-option').forEach(option => {
+    option.addEventListener('click', () => {
+      document.querySelectorAll('.gender-option').forEach(o => o.classList.remove('selected'));
+      option.classList.add('selected');
+      selectedGender = option.dataset.gender;
     });
   });
 
@@ -2504,7 +2713,8 @@ function setupLoginScreen() {
     setTimeout(() => {
       game.socket.emit('playerJoin', {
         name: playerName,
-        class: selectedClass
+        class: selectedClass,
+        gender: selectedGender
       });
     }, 100);
 

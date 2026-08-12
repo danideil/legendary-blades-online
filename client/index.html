@@ -19,6 +19,15 @@
       <div class="login-form">
         <input type="text" id="player-name" placeholder="Enter Character Name" maxlength="16">
         
+        <div class="gender-selection">
+          <div class="gender-option selected" data-gender="male">
+            <span class="gender-icon">♂</span> Male
+          </div>
+          <div class="gender-option" data-gender="female">
+            <span class="gender-icon">♀</span> Female
+          </div>
+        </div>
+        
         <div class="class-selection">
           <h3>Select Your Class</h3>
           <div class="class-options">
@@ -506,6 +515,6 @@
   </div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="js/game.js?v=6"></script>
+  <script src="js/game.js?v=7"></script>
 </body>
 </html>

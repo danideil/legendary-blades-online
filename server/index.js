@@ -388,13 +388,14 @@ function calculateStats(player) {
 }
 
 // Create new player
-function createPlayer(socketId, name, playerClass) {
+function createPlayer(socketId, name, playerClass, gender) {
   const classInfo = classData[playerClass] || classData.darkKnight;
 
   const player = {
     id: socketId,
     name: name || `Player_${socketId.substring(0, 6)}`,
     class: playerClass || 'darkKnight',
+    gender: gender === 'female' ? 'female' : 'male',
     level: 1,
     xp: 0,
     xpToLevel: xpForLevel(2),
@@ -846,7 +847,7 @@ io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
   socket.on('playerJoin', (data) => {
-    const player = createPlayer(socket.id, data.name, data.class);
+    const player = createPlayer(socket.id, data.name, data.class, data.gender);
     gameState.players.set(socket.id, player);
 
     socket.emit('gameState', {
