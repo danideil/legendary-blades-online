@@ -1124,27 +1124,35 @@ function buildTerrain() {
       const shore = lakeD - lakeR; // negative = inside water
 
       if (shore < 0) {
-        // water: deeper toward center, ripple noise
+        // water: deeper toward center, ripple noise + subtle depth bands
         const depth = Math.min(1, -shore / lakeR);
-        const ripple = (fbm(wx * 0.15, wz * 0.15) - 0.5) * 18;
-        const wc = lerpColor([66, 132, 205], [26, 74, 150], depth);
-        r = wc[0] + ripple; g = wc[1] + ripple; b = wc[2] + ripple * 0.6;
+        const ripple = (fbm(wx * 0.15, wz * 0.15) - 0.5) * 16;
+        const band = Math.sin(-shore * 1.1) * 5;
+        const wc = lerpColor([74, 140, 208], [20, 62, 138], Math.pow(depth, 0.8));
+        r = wc[0] + ripple + band; g = wc[1] + ripple + band; b = wc[2] + ripple * 0.6 + band;
       } else {
         // base grass with smooth biome blending
         const n1 = fbm(wx * 0.012, wz * 0.012);            // biome selector (large scale)
         const n2 = fbm(wx * 0.05 + 37, wz * 0.05 + 37);    // medium patches
         const n3 = vnoise(wx * 0.3 + 91, wz * 0.3 + 91);   // fine detail
+        const n4 = vnoise(wx * 0.9 + 213, wz * 0.9 + 213); // micro grain
         let gc = biomeColor(n1);
-        const shade = (n2 - 0.5) * 26 + (n3 - 0.5) * 12;
-        r = gc[0] + shade; g = gc[1] + shade; b = gc[2] + shade * 0.7;
+        // organic clumps: ridged noise creates natural grass patch borders
+        const clump = Math.abs(n2 - 0.5) * 2;
+        const shade = (n2 - 0.5) * 26 + (n3 - 0.5) * 14 + (n4 - 0.5) * 8 - clump * 8;
+        r = gc[0] + shade; g = gc[1] + shade + clump * 4; b = gc[2] + shade * 0.7;
 
-        // sandy shoreline blending into grass
-        if (shore < 2) {
-          const sand = [214, 196, 146];
-          r = sand[0]; g = sand[1]; b = sand[2];
+        // sandy shoreline: wet band near water, dry sand, then grass blend
+        if (shore < 0.9) {
+          const wet = [178, 158, 112];
+          r = wet[0]; g = wet[1]; b = wet[2];
+        } else if (shore < 2.2) {
+          const sand = [216, 198, 150];
+          const grain = (n4 - 0.5) * 14;
+          r = sand[0] + grain; g = sand[1] + grain; b = sand[2] + grain;
         } else if (shore < 7) {
-          const t = (shore - 2) / 5;
-          const sand = [214, 196, 146];
+          const t = (shore - 2.2) / 4.8;
+          const sand = [216, 198, 150];
           r = lerp(sand[0], r, t); g = lerp(sand[1], g, t); b = lerp(sand[2], b, t);
         }
 
@@ -1184,6 +1192,58 @@ function buildTerrain() {
   }
 
   tctx.putImageData(img, 0, 0);
+
+  // ---- baked detail pass: grass blades, stones, wildflowers, dirt patches ----
+  let s2 = 98765;
+  const drand = () => { s2 = (s2 * 16807) % 2147483647; return s2 / 2147483647; };
+
+  for (let i = 0; i < 16000; i++) {
+    const wx = (drand() - 0.5) * 496;
+    const wz = (drand() - 0.5) * 496;
+    if (isWater(wx, wz)) continue;
+    const pxX = Math.floor((wx + 250) * TERRAIN_RES);
+    const pxY = Math.floor((wz + 250) * TERRAIN_RES);
+    const dTown = Math.hypot(wx, wz);
+
+    if (dTown < 34) {
+      // town dirt: gravel and small stones
+      const r = drand();
+      if (r < 0.3) {
+        tctx.fillStyle = 'rgba(196,180,152,0.65)';
+        tctx.fillRect(pxX, pxY, 2, 1);
+      } else if (r < 0.5) {
+        tctx.fillStyle = 'rgba(112,92,66,0.5)';
+        tctx.fillRect(pxX, pxY, 1, 1);
+      }
+    } else {
+      const r = drand();
+      if (r < 0.5) {
+        // dark grass blade
+        tctx.fillStyle = 'rgba(18,58,24,0.5)';
+        tctx.fillRect(pxX, pxY, 1, 2);
+      } else if (r < 0.78) {
+        // sunlit grass blade
+        tctx.fillStyle = 'rgba(148,200,116,0.42)';
+        tctx.fillRect(pxX, pxY, 1, 2);
+      } else if (r < 0.85) {
+        // wildflowers - only in bright meadow biome
+        if (fbm(wx * 0.012, wz * 0.012) > 0.52) {
+          const cols = ['rgba(232,204,84,0.95)', 'rgba(224,124,152,0.95)', 'rgba(152,164,232,0.95)', 'rgba(244,244,244,0.9)'];
+          tctx.fillStyle = cols[Math.floor(drand() * cols.length)];
+          tctx.fillRect(pxX, pxY, 2, 2);
+        }
+      } else if (r < 0.9) {
+        // bare-earth patch
+        tctx.fillStyle = 'rgba(118,98,68,0.22)';
+        tctx.fillRect(pxX, pxY, 3, 2);
+      } else if (r < 0.93) {
+        // tiny field stone
+        tctx.fillStyle = 'rgba(168,168,176,0.55)';
+        tctx.fillRect(pxX, pxY, 2, 1);
+      }
+    }
+  }
+
   game.terrainCanvas = canvas;
 }
 
@@ -1479,6 +1539,85 @@ function resizeCanvas() {
   game.ctx.imageSmoothingEnabled = false;
   // Smaller screens see a bit less world
   game.zoom = window.innerWidth < 600 ? 13 : 16;
+  buildVignette();
+}
+
+// Soft atmospheric vignette (MU-style framing) - rebuilt on resize
+function buildVignette() {
+  const c = document.createElement('canvas');
+  c.width = window.innerWidth;
+  c.height = window.innerHeight;
+  const vctx = c.getContext('2d');
+  const cx = c.width / 2, cy = c.height / 2;
+  const inner = Math.min(cx, cy) * 0.7;
+  const outer = Math.hypot(cx, cy) * 1.05;
+  const grad = vctx.createRadialGradient(cx, cy, inner, cx, cy, outer);
+  grad.addColorStop(0, 'rgba(8,12,24,0)');
+  grad.addColorStop(1, 'rgba(8,12,24,0.34)');
+  vctx.fillStyle = grad;
+  vctx.fillRect(0, 0, c.width, c.height);
+  game.vignette = c;
+}
+
+// Drifting cloud shadows over the terrain
+const cloudShadows = [
+  { x0: -140, z0: -90, rx: 62, rz: 40, spdX: 1.9, spdZ: 0.5 },
+  { x0: 40, z0: 60, rx: 80, rz: 52, spdX: 1.4, spdZ: -0.4 },
+  { x0: 160, z0: -40, rx: 48, rz: 34, spdX: 2.3, spdZ: 0.7 },
+  { x0: -60, z0: 170, rx: 70, rz: 44, spdX: 1.1, spdZ: -0.6 }
+];
+
+function drawCloudShadows(ctx) {
+  cloudShadows.forEach(c => {
+    const wx = -300 + ((c.x0 + game.time * c.spdX + 300) % 600 + 600) % 600;
+    const wz = -300 + ((c.z0 + game.time * c.spdZ + 300) % 600 + 600) % 600;
+    const s = worldToScreen(wx, wz);
+    const rx = c.rx * game.zoom, rz = c.rz * game.zoom;
+    if (s.x + rx < 0 || s.x - rx > game.canvas.width || s.y + rz < 0 || s.y - rz > game.canvas.height) return;
+    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, rx);
+    grad.addColorStop(0, 'rgba(10,20,35,0.13)');
+    grad.addColorStop(0.7, 'rgba(10,20,35,0.08)');
+    grad.addColorStop(1, 'rgba(10,20,35,0)');
+    ctx.fillStyle = grad;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.scale(1, rz / rx);
+    ctx.translate(-s.x, -s.y);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, rx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// Floating ambient particles (pollen / light motes)
+function drawAmbientParticles(ctx) {
+  if (!game.ambient) {
+    game.ambient = [];
+    for (let i = 0; i < 22; i++) {
+      game.ambient.push({
+        ox: (Math.random() - 0.5) * 70,
+        oz: (Math.random() - 0.5) * 50,
+        phase: Math.random() * Math.PI * 2,
+        spd: 0.4 + Math.random() * 0.7,
+        size: 1.5 + Math.random() * 2
+      });
+    }
+  }
+  const cam = game.player.position;
+  game.ambient.forEach(p => {
+    p.ox += p.spd * game.delta * 1.6;
+    if (p.ox > 40) p.ox = -40;
+    const wob = Math.sin(game.time * 0.9 + p.phase) * 4;
+    const s = worldToScreen(cam.x + p.ox, cam.z + p.oz + wob * 0.3);
+    const blink = 0.25 + (Math.sin(game.time * 1.3 + p.phase * 2) * 0.5 + 0.5) * 0.3;
+    ctx.globalAlpha = blink;
+    ctx.fillStyle = '#fff8c8';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y - 40 - wob * 3, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
 }
 
 function worldToScreen(x, z) {
@@ -1768,6 +1907,7 @@ function render() {
   }
 
   drawTerrain(ctx);
+  drawCloudShadows(ctx);
 
   // collect drawables and sort by world z (depth)
   const drawables = [];
@@ -1798,7 +1938,15 @@ function render() {
   // effects
   drawEffects(ctx);
 
+  // floating light motes for atmosphere
+  drawAmbientParticles(ctx);
+
   ctx.restore();
+
+  // atmospheric vignette on top (not affected by screen shake)
+  if (game.vignette) {
+    ctx.drawImage(game.vignette, 0, 0);
+  }
 }
 
 // ============================================================
