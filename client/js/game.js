@@ -23,7 +23,9 @@ const game = {
   skillNames: [],
   skillCooldowns: {},
   effects: [],
-  time: 0
+  time: 0,
+  delta: 0.016,
+  shake: 0
 };
 
 // Class icons and skill icons
@@ -43,11 +45,40 @@ const skillIcons = {
   heuksal: { shadowStrike: '🌑', phantomSlash: '👻', darkCloud: '☁️', assassinate: '💀' }
 };
 
+// Visual effect per skill: slash / burst / projectile / arrows / bolt / heal
+const skillEffects = {
+  // Dark Knight
+  twistingSlash:  { type: 'slash', color: '#ffd24a', size: 1.5 },
+  deathStab:      { type: 'slash', color: '#ff5040', size: 1.1 },
+  ragefulBlow:    { type: 'burst', color: '#ff3020', size: 1.6 },
+  comboSlash:     { type: 'slash', color: '#ffee66', size: 1.9 },
+  // Dark Wizard
+  fireBall:       { type: 'projectile', color: '#ff7020', size: 1.2 },
+  powerWave:      { type: 'burst', color: '#40a0ff', size: 1.2 },
+  hellFire:       { type: 'burst', color: '#ff5010', size: 1.8 },
+  inferno:        { type: 'burst', color: '#ff8c00', size: 2.3 },
+  // Fairy Elf
+  tripleShot:     { type: 'arrows', color: '#c8ff80', count: 3 },
+  penetration:    { type: 'arrows', color: '#ffffff', count: 1 },
+  iceArrow:       { type: 'projectile', color: '#80d0ff', size: 1 },
+  heal:           { type: 'heal', color: '#60ff80' },
+  // Bicheon
+  chainSword:     { type: 'slash', color: '#ffcc00', size: 1.3 },
+  snowFlower:     { type: 'burst', color: '#a0e0ff', size: 1.4 },
+  flyingDragon:   { type: 'burst', color: '#ffd700', size: 1.8 },
+  thunderAssault: { type: 'bolt', color: '#ffe840' },
+  // Heuksal
+  shadowStrike:   { type: 'slash', color: '#a060ff', size: 1.2 },
+  phantomSlash:   { type: 'slash', color: '#c080ff', size: 1.6 },
+  darkCloud:      { type: 'burst', color: '#7040b0', size: 1.5 },
+  assassinate:    { type: 'slash', color: '#ff2060', size: 2 }
+};
+
 // ============================================================
 // SPRITE FACTORY - pixel art drawn on offscreen canvases
 // ============================================================
 const spriteCache = new Map();
-const PIXEL = 3; // scale factor for pixel art
+const PIXEL = 4; // scale factor for pixel art
 
 function makeCanvas(w, h) {
   const c = document.createElement('canvas');
@@ -61,6 +92,24 @@ function makeCanvas(w, h) {
 function px(ctx, x, y, w, h, color) {
   ctx.fillStyle = color;
   ctx.fillRect(x * PIXEL, y * PIXEL, w * PIXEL, h * PIXEL);
+}
+
+// Dark outline around sprite for clarity/readability
+function outlineSprite(src) {
+  const pad = PIXEL;
+  const c = document.createElement('canvas');
+  c.width = src.width + pad * 2;
+  c.height = src.height + pad * 2;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const offsets = [[-pad, 0], [pad, 0], [0, -pad], [0, pad]];
+  offsets.forEach(([ox, oy]) => ctx.drawImage(src, pad + ox, pad + oy));
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = 'rgba(10,10,16,0.85)';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.drawImage(src, pad, pad);
+  return c;
 }
 
 // Class visual definitions
@@ -101,8 +150,9 @@ function getCharacterSprite(cls, outfitId, dir) {
       mctx.translate(mc.width, 0);
       mctx.scale(-1, 1);
       mctx.drawImage(c, 0, 0);
-      spriteCache.set(key, mc);
-      return mc;
+      const outlinedM = outlineSprite(mc);
+      spriteCache.set(key, outlinedM);
+      return outlinedM;
     }
   } else if (dir === 'up') {
     drawCharBack(ctx, cls, look);
@@ -110,8 +160,9 @@ function getCharacterSprite(cls, outfitId, dir) {
     drawCharFront(ctx, cls, look);
   }
 
-  spriteCache.set(key, c);
-  return c;
+  const outlined = outlineSprite(c);
+  spriteCache.set(key, outlined);
+  return outlined;
 }
 
 function drawHeadgear(ctx, look, xOff = 0) {
@@ -266,11 +317,13 @@ function getMonsterSprite(type, flip) {
     mctx.translate(mc.width, 0);
     mctx.scale(-1, 1);
     mctx.drawImage(c, 0, 0);
-    spriteCache.set(key, mc);
-    return mc;
+    const outlinedM = outlineSprite(mc);
+    spriteCache.set(key, outlinedM);
+    return outlinedM;
   }
-  spriteCache.set(key, c);
-  return c;
+  const outlined = outlineSprite(c);
+  spriteCache.set(key, outlined);
+  return outlined;
 }
 
 function drawDragonSprite(ctx, body, belly) {
@@ -595,6 +648,14 @@ function initSocket() {
     const type = data.critical ? 'critical' : 'damage';
     showDamageNumber(data.defenderId, data.damage, type);
 
+    // Spawn hit/spell visual effect
+    spawnSkillEffect(data);
+
+    // Screen shake on critical hits involving the local player
+    if (data.critical && (data.attackerId === game.player?.id || data.defenderId === game.player?.id)) {
+      game.shake = 0.3;
+    }
+
     if (game.selectedTarget && game.selectedTarget.id === data.defenderId) {
       updateTargetUI();
     }
@@ -757,7 +818,7 @@ function resizeCanvas() {
   game.canvas.height = window.innerHeight;
   game.ctx.imageSmoothingEnabled = false;
   // Smaller screens see a bit less world
-  game.zoom = window.innerWidth < 600 ? 11 : 14;
+  game.zoom = window.innerWidth < 600 ? 13 : 16;
 }
 
 function worldToScreen(x, z) {
@@ -874,7 +935,7 @@ function drawCharacter(ctx, ent, isLocal) {
   const outfitId = ent.equipment?.outfit?.outfitId || null;
   const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down');
 
-  const scale = game.zoom / 14;
+  const scale = (game.zoom / 14) * 1.3;
   const w = sprite.width * scale;
   const h = sprite.height * scale;
   const bob = ent.moving ? Math.sin(ent.animPhase * 2) * 2 * scale : 0;
@@ -894,7 +955,12 @@ function drawCharacter(ctx, ent, isLocal) {
   ctx.ellipse(s.x, s.y + 2, w * 0.35, w * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // hit flash
+  if (ent.hitFlash > 0) {
+    ctx.filter = 'brightness(1.9) saturate(1.4)';
+  }
   ctx.drawImage(sprite, s.x - w / 2, s.y - h + bob, w, h);
+  ctx.filter = 'none';
 
   // wings indicator (glow behind player if wings equipped)
   if (ent.equipment?.wings) {
@@ -905,9 +971,9 @@ function drawCharacter(ctx, ent, isLocal) {
   }
 
   // name
-  ctx.font = 'bold 12px Arial';
+  ctx.font = 'bold 14px Arial';
   ctx.textAlign = 'center';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4;
   ctx.strokeStyle = '#000';
   const label = `${ent.name} [${ent.level}]`;
   ctx.strokeText(label, s.x, s.y - h - 6);
@@ -920,7 +986,7 @@ function drawMonster(ctx, npc) {
   const flip = npc.facing === 'right';
   const sprite = getMonsterSprite(npc.type, flip);
 
-  const scale = (game.zoom / 14) * (npc.boss ? 1.6 : 1);
+  const scale = (game.zoom / 14) * (npc.boss ? 1.8 : 1.2);
   const w = sprite.width * scale;
   const h = sprite.height * scale;
   const bob = npc.moving ? Math.sin(npc.animPhase * 2) * 2 * scale : 0;
@@ -947,25 +1013,30 @@ function drawMonster(ctx, npc) {
   ctx.ellipse(s.x, s.y + 2, w * 0.35, w * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // hit flash
+  if (npc.hitFlash > 0) {
+    ctx.filter = 'brightness(1.9) saturate(1.4)';
+  }
   ctx.drawImage(sprite, s.x - w / 2, s.y - h + bob, w, h);
+  ctx.filter = 'none';
 
   // health bar
   const hpPct = Math.max(0, npc.health / npc.maxHealth);
-  const barW = Math.max(30, w * 0.8);
+  const barW = Math.max(36, w * 0.8);
   ctx.fillStyle = '#000';
-  ctx.fillRect(s.x - barW / 2 - 1, s.y - h - 10, barW + 2, 6);
+  ctx.fillRect(s.x - barW / 2 - 1, s.y - h - 11, barW + 2, 7);
   ctx.fillStyle = npc.boss ? '#ff2020' : '#cc3030';
-  ctx.fillRect(s.x - barW / 2, s.y - h - 9, barW * hpPct, 4);
+  ctx.fillRect(s.x - barW / 2, s.y - h - 10, barW * hpPct, 5);
 
   // name
-  ctx.font = 'bold 11px Arial';
+  ctx.font = 'bold 13px Arial';
   ctx.textAlign = 'center';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 4;
   ctx.strokeStyle = '#000';
   const label = `${npc.name} [${npc.level}]`;
-  ctx.strokeText(label, s.x, s.y - h - 14);
+  ctx.strokeText(label, s.x, s.y - h - 16);
   ctx.fillStyle = npc.boss ? '#ff5050' : (npc.rare ? '#ffd700' : '#ffb0b0');
-  ctx.fillText(label, s.x, s.y - h - 14);
+  ctx.fillText(label, s.x, s.y - h - 16);
 }
 
 function drawObject(ctx, obj) {
@@ -1013,6 +1084,12 @@ function render() {
   const ctx = game.ctx;
   if (!game.player) return;
 
+  // screen shake on critical hits
+  ctx.save();
+  if (game.shake > 0) {
+    ctx.translate((Math.random() - 0.5) * 10 * game.shake, (Math.random() - 0.5) * 10 * game.shake);
+  }
+
   drawTerrain(ctx);
 
   // collect drawables and sort by world z (depth)
@@ -1041,22 +1118,242 @@ function render() {
     else drawCharacter(ctx, d.ref, true);
   });
 
-  // effects (particles)
+  // effects
+  drawEffects(ctx);
+
+  ctx.restore();
+}
+
+// ============================================================
+// EFFECT RENDERING
+// ============================================================
+function drawEffects(ctx) {
+  const dt = game.delta || 0.016;
+  const sc = game.zoom / 14;
+  const newEffects = [];
+
   game.effects = game.effects.filter(ef => {
-    ef.life -= 0.016;
-    if (ef.life <= 0) return false;
-    ef.particles.forEach(p => {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.15;
+    ef.t = (ef.t || 0) + dt;
+    if (ef.t < 0) return true; // delayed start
+    const dur = ef.dur || 1;
+    if (ef.t >= dur) {
+      // projectile explodes on arrival
+      if (ef.type === 'projectile' && !ef.thin) {
+        newEffects.push({ type: 'burst', x: ef.tx, z: ef.tz, color: ef.color, size: (ef.size || 1) * 0.9, t: 0, dur: 0.4, parts: makeBurstParts() });
+      }
+      return false;
+    }
+    const p = ef.t / dur;
+
+    if (ef.type === 'particles') {
+      ef.particles.forEach(pt => {
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.vy += 0.15;
+        const s = worldToScreen(ef.x, ef.z);
+        ctx.globalAlpha = Math.max(0, 1 - p);
+        ctx.fillStyle = pt.color;
+        ctx.fillRect(s.x + pt.x, s.y + pt.y - 20, 5, 5);
+      });
+      ctx.globalAlpha = 1;
+
+    } else if (ef.type === 'slash') {
       const s = worldToScreen(ef.x, ef.z);
-      ctx.globalAlpha = Math.max(0, ef.life);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(s.x + p.x, s.y + p.y - 20, 4, 4);
-    });
-    ctx.globalAlpha = 1;
+      const cy = s.y - 34 * sc;
+      const r = (14 + p * 30) * sc * (ef.size || 1);
+      const a0 = ef.seed + p * 3;
+      ctx.globalAlpha = 1 - p;
+      ctx.strokeStyle = ef.color;
+      ctx.lineWidth = 6 * sc;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r, a0, a0 + 2.1);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5 * sc;
+      ctx.beginPath();
+      ctx.arc(s.x, cy, r * 0.75, a0 + 0.3, a0 + 1.8);
+      ctx.stroke();
+      // spark dots
+      ctx.fillStyle = ef.color;
+      for (let i = 0; i < 4; i++) {
+        const ang = a0 + i * 1.6;
+        ctx.fillRect(s.x + Math.cos(ang) * r * 1.1, cy + Math.sin(ang) * r * 1.1, 4, 4);
+      }
+      ctx.globalAlpha = 1;
+
+    } else if (ef.type === 'burst') {
+      const s = worldToScreen(ef.x, ef.z);
+      const cy = s.y - 24 * sc;
+      const R = p * 46 * sc * (ef.size || 1);
+      ctx.globalAlpha = 1 - p;
+      // expanding ring
+      ctx.strokeStyle = ef.color;
+      ctx.lineWidth = 7 * sc * (1 - p * 0.6);
+      ctx.beginPath();
+      ctx.arc(s.x, cy, R, 0, Math.PI * 2);
+      ctx.stroke();
+      // inner flash
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha = (1 - p) * 0.5;
+      ctx.beginPath();
+      ctx.arc(s.x, cy, R * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+      // flying particles
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle = ef.color;
+      (ef.parts || []).forEach(d => {
+        ctx.fillRect(s.x + d.dx * R * 1.2, cy + d.dy * R * 1.2, 5, 5);
+      });
+      ctx.globalAlpha = 1;
+
+    } else if (ef.type === 'projectile') {
+      const from = worldToScreen(ef.fx, ef.fz);
+      const to = worldToScreen(ef.tx, ef.tz);
+      const cx = from.x + (to.x - from.x) * p;
+      const cy = from.y + (to.y - from.y) * p - 30 * sc;
+      if (ef.thin) {
+        // arrow streak
+        const dx = to.x - from.x, dy = to.y - from.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len;
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = ef.color;
+        ctx.lineWidth = 3 * sc;
+        ctx.beginPath();
+        ctx.moveTo(cx - ux * 20 * sc, cy - uy * 20 * sc);
+        ctx.lineTo(cx, cy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else {
+        // glowing orb with trail
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = ef.color;
+        for (let i = 1; i <= 3; i++) {
+          const tp = Math.max(0, p - i * 0.08);
+          const tx2 = from.x + (to.x - from.x) * tp;
+          const ty2 = from.y + (to.y - from.y) * tp - 30 * sc;
+          ctx.beginPath();
+          ctx.arc(tx2, ty2, (9 - i * 2) * sc * (ef.size || 1), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 9 * sc * (ef.size || 1), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4 * sc * (ef.size || 1), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+    } else if (ef.type === 'bolt') {
+      const s = worldToScreen(ef.x, ef.z);
+      const topY = s.y - 260 * sc;
+      const botY = s.y - 20 * sc;
+      ctx.globalAlpha = p < 0.4 ? 1 : (1 - p) / 0.6;
+      // jagged main bolt
+      ctx.strokeStyle = ef.color;
+      ctx.lineWidth = 5 * sc;
+      ctx.beginPath();
+      ctx.moveTo(s.x + Math.sin(ef.seed) * 10, topY);
+      const segs = 6;
+      for (let i = 1; i <= segs; i++) {
+        const yy = topY + (botY - topY) * (i / segs);
+        const xx = s.x + Math.sin(ef.seed * 3 + i * 7.3) * 16 * sc * (i < segs ? 1 : 0);
+        ctx.lineTo(xx, yy);
+      }
+      ctx.stroke();
+      // white core
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2 * sc;
+      ctx.stroke();
+      // impact flash
+      ctx.fillStyle = ef.color;
+      ctx.beginPath();
+      ctx.ellipse(s.x, botY, 22 * sc * (1 - p), 8 * sc * (1 - p), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+    } else if (ef.type === 'heal') {
+      const s = worldToScreen(ef.x, ef.z);
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle = ef.color;
+      ctx.font = `bold ${Math.round(14 * sc)}px Arial`;
+      for (let i = 0; i < 5; i++) {
+        const ang = i * 1.26 + game.time;
+        const xx = s.x + Math.cos(ang) * 18 * sc;
+        const yy = s.y - 30 * sc - p * 45 * sc - i * 6;
+        ctx.fillText('+', xx, yy);
+      }
+      // soft glow
+      ctx.globalAlpha = (1 - p) * 0.25;
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y - 25 * sc, 26 * sc, 34 * sc, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     return true;
   });
+
+  newEffects.forEach(e => game.effects.push(e));
+}
+
+function makeBurstParts() {
+  const parts = [];
+  for (let i = 0; i < 12; i++) {
+    const ang = (i / 12) * Math.PI * 2 + Math.random() * 0.4;
+    parts.push({ dx: Math.cos(ang), dy: Math.sin(ang) * 0.6 });
+  }
+  return parts;
+}
+
+// Spawn effect based on combat result
+function spawnSkillEffect(data) {
+  const attacker = data.attackerId === game.player?.id
+    ? game.player
+    : (game.players.get(data.attackerId) || game.npcs.get(data.attackerId));
+  const defender = data.defenderId === game.player?.id
+    ? game.player
+    : (game.npcs.get(data.defenderId) || game.players.get(data.defenderId));
+  if (!defender?.position) return;
+
+  // white hit flash on the defender sprite
+  defender.hitFlash = 0.15;
+
+  const tx = defender.position.x;
+  const tz = defender.position.z;
+  const fx = data.skill ? skillEffects[data.skill] : null;
+
+  if (!fx) {
+    // basic hit (e.g. monster attacking a player)
+    game.effects.push({ type: 'slash', x: tx, z: tz, color: '#ff6050', size: 0.9, seed: Math.random() * 6.28, t: 0, dur: 0.3 });
+    return;
+  }
+
+  if (fx.type === 'projectile' && attacker?.position) {
+    game.effects.push({ type: 'projectile', fx: attacker.position.x, fz: attacker.position.z, tx, tz, color: fx.color, size: fx.size || 1, t: 0, dur: 0.28 });
+  } else if (fx.type === 'arrows' && attacker?.position) {
+    const n = fx.count || 1;
+    for (let i = 0; i < n; i++) {
+      game.effects.push({
+        type: 'projectile', thin: true,
+        fx: attacker.position.x + (i - (n - 1) / 2) * 1.5, fz: attacker.position.z,
+        tx: tx + (i - (n - 1) / 2) * 1.2, tz,
+        color: fx.color, t: -i * 0.06, dur: 0.22
+      });
+    }
+    game.effects.push({ type: 'burst', x: tx, z: tz, color: fx.color, size: 0.7, t: 0.2, dur: 0.5, parts: makeBurstParts() });
+  } else if (fx.type === 'bolt') {
+    game.effects.push({ type: 'bolt', x: tx, z: tz, color: fx.color, t: 0, dur: 0.4, seed: Math.random() * 100 });
+  } else if (fx.type === 'heal') {
+    game.effects.push({ type: 'heal', x: tx, z: tz, color: fx.color, t: 0, dur: 0.9 });
+  } else if (fx.type === 'burst') {
+    game.effects.push({ type: 'burst', x: tx, z: tz, color: fx.color, size: fx.size || 1, t: 0, dur: 0.5, parts: makeBurstParts() });
+  } else {
+    game.effects.push({ type: 'slash', x: tx, z: tz, color: fx.color, size: fx.size || 1, seed: Math.random() * 6.28, t: 0, dur: 0.32 });
+  }
 }
 
 // ============================================================
@@ -1072,7 +1369,8 @@ function createDeathEffect(position) {
       color: Math.random() > 0.5 ? '#ff3030' : '#aa1010'
     });
   }
-  game.effects.push({ x: position.x, z: position.z, particles, life: 1 });
+  game.effects.push({ type: 'particles', x: position.x, z: position.z, particles, t: 0, dur: 1 });
+  game.effects.push({ type: 'burst', x: position.x, z: position.z, color: '#ff4030', size: 1.2, t: 0, dur: 0.45, parts: makeBurstParts() });
 }
 
 function createLevelUpEffect() {
@@ -1086,7 +1384,8 @@ function createLevelUpEffect() {
       color: Math.random() > 0.5 ? '#ffd700' : '#fff8a0'
     });
   }
-  game.effects.push({ x: game.player.position.x, z: game.player.position.z, particles, life: 1.5 });
+  game.effects.push({ type: 'particles', x: game.player.position.x, z: game.player.position.z, particles, t: 0, dur: 1.5 });
+  game.effects.push({ type: 'burst', x: game.player.position.x, z: game.player.position.z, color: '#ffd700', size: 2, t: 0, dur: 0.7, parts: makeBurstParts() });
 }
 
 // ============================================================
@@ -1959,6 +2258,13 @@ function gameLoop() {
   const delta = Math.min(0.1, (now - game.clock.last) / 1000);
   game.clock.last = now;
   game.time += delta;
+  game.delta = delta;
+
+  // decay screen shake and hit flashes
+  if (game.shake > 0) game.shake = Math.max(0, game.shake - delta * 1.5);
+  if (game.player?.hitFlash > 0) game.player.hitFlash -= delta;
+  game.players.forEach(p => { if (p.hitFlash > 0) p.hitFlash -= delta; });
+  game.npcs.forEach(n => { if (n.hitFlash > 0) n.hitFlash -= delta; });
 
   if (game.player) {
     let moveX = 0, moveZ = 0;
