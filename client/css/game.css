@@ -1071,7 +1071,19 @@ body {
   image-rendering: pixelated;
 }
 
-/* Inventory */
+/* Inventory - opens from the left side */
+#inventory-panel {
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  animation: slideInLeft 0.25s ease-out;
+}
+
+@keyframes slideInLeft {
+  0% { transform: translateY(-50%) translateX(-40px); opacity: 0; }
+  100% { transform: translateY(-50%) translateX(0); opacity: 1; }
+}
+
 .inventory-header {
   text-align: center;
   margin-bottom: 15px;
@@ -1978,6 +1990,11 @@ body {
     min-width: 90vw;
     max-width: 95vw;
     max-height: 85vh;
+  }
+
+  #inventory-panel {
+    left: 5px;
+    max-width: 92vw;
   }
   
   .panel-header {
