@@ -57,9 +57,11 @@ A browser-based 3D MMORPG inspired by **MU Online** and **Silkroad Online**, fea
 
 - **Dark Fantasy World**: Atmospheric night-time environment
 - **Leveling**: Exponential XP curve, death penalty (5% XP loss)
-- **Equipment Slots**: Weapon, Armor, Helm, Pants, Boots, Wings
+- **Equipment Slots**: Weapon, Armor, Helm, Pants, Boots, Wings, Outfit
 - **Quest System**: Monster hunting, trading, boss kills
-- **Real-time Combat**: Target-based with skill combos
+- **Skill progression**: Skills 1-3 from the start, 4/5/6 at levels 5/10/15, skills 7-9 bought from Master Kael. Each skill upgrades to level 5 at the trainer.
+- **Ranged combat**: Fairy Elf (bow) and Dark Wizard (magic bolt) attack from range and will not walk into melee when you tap a monster
+- **Real-time Combat**: Target-based with 9 skill slots
 - **Minimap**: Shows monsters, players, and current zone
 
 ## Controls
@@ -67,7 +69,10 @@ A browser-based 3D MMORPG inspired by **MU Online** and **Silkroad Online**, fea
 | Key | Action |
 |-----|--------|
 | W/A/S/D | Move |
-| 1-4 | Use Skills |
+| Click ground | Walk there |
+| Click / tap monster | Approach to attack range, then auto-attack (ranged classes stay back) |
+| Space or 1 | Basic attack (melee / bow / magic bolt by class) |
+| 2-9 | Skills (2-3 starting specials; 4-6 by level; 7-9 from trainer) |
 | F1-F4 | Use Potions |
 | Tab | Cycle Targets |
 | Enter | Chat |
@@ -76,7 +81,6 @@ A browser-based 3D MMORPG inspired by **MU Online** and **Silkroad Online**, fea
 | Q | Quest Log |
 | J | Silk Road Jobs |
 | E | Enhancement (Chaos Forge) |
-| Right Mouse + Drag | Rotate Camera |
 | Scroll Wheel | Zoom |
 | Escape | Close Panels |
 

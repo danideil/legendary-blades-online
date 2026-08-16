@@ -129,33 +129,57 @@
       <!-- Skill Bar (MU Style) -->
       <div id="skill-bar">
         <div class="skill-row">
-          <div class="skill-slot basic-slot" data-key="SPC" title="Basic Attack - free, every second (Space)">
-            <div class="skill-icon">👊</div>
-            <div class="skill-key">SPC</div>
+          <div class="skill-slot" data-skill="1" data-key="1">
+            <div class="skill-icon">⚔️</div>
+            <div class="skill-key">1</div>
             <div class="skill-cooldown"></div>
             <div class="skill-name">Attack</div>
           </div>
-          <div class="skill-slot" data-skill="0" data-key="1">
-            <div class="skill-icon"></div>
-            <div class="skill-key">1</div>
-            <div class="skill-cooldown"></div>
-            <div class="skill-name"></div>
-          </div>
-          <div class="skill-slot" data-skill="1" data-key="2">
+          <div class="skill-slot" data-skill="2" data-key="2">
             <div class="skill-icon"></div>
             <div class="skill-key">2</div>
             <div class="skill-cooldown"></div>
             <div class="skill-name"></div>
           </div>
-          <div class="skill-slot" data-skill="2" data-key="3">
+          <div class="skill-slot" data-skill="3" data-key="3">
             <div class="skill-icon"></div>
             <div class="skill-key">3</div>
             <div class="skill-cooldown"></div>
             <div class="skill-name"></div>
           </div>
-          <div class="skill-slot" data-skill="3" data-key="4">
+          <div class="skill-slot" data-skill="4" data-key="4">
             <div class="skill-icon"></div>
             <div class="skill-key">4</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="5" data-key="5">
+            <div class="skill-icon"></div>
+            <div class="skill-key">5</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="6" data-key="6">
+            <div class="skill-icon"></div>
+            <div class="skill-key">6</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="7" data-key="7">
+            <div class="skill-icon"></div>
+            <div class="skill-key">7</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="8" data-key="8">
+            <div class="skill-icon"></div>
+            <div class="skill-key">8</div>
+            <div class="skill-cooldown"></div>
+            <div class="skill-name"></div>
+          </div>
+          <div class="skill-slot" data-skill="9" data-key="9">
+            <div class="skill-icon"></div>
+            <div class="skill-key">9</div>
             <div class="skill-cooldown"></div>
             <div class="skill-name"></div>
           </div>
@@ -247,6 +271,10 @@
           <span class="btn-icon">✨</span>
           <span class="btn-text">Forge</span>
         </button>
+        <button class="menu-btn" id="trainer-btn" title="Skill Trainer">
+          <span class="btn-icon">🥋</span>
+          <span class="btn-text">Train</span>
+        </button>
       </div>
       
       <!-- Stat Points Indicator -->
@@ -266,26 +294,14 @@
         
         <!-- Mobile Skill Bar -->
         <div id="mobile-skill-bar">
-          <button class="mobile-skill-btn" data-skill="0">
-            <span class="skill-icon">⚔️</span>
-            <span class="skill-num">1</span>
-            <div class="cooldown-overlay"></div>
-          </button>
-          <button class="mobile-skill-btn" data-skill="1">
-            <span class="skill-icon">🗡️</span>
-            <span class="skill-num">2</span>
-            <div class="cooldown-overlay"></div>
-          </button>
-          <button class="mobile-skill-btn" data-skill="2">
-            <span class="skill-icon">💀</span>
-            <span class="skill-num">3</span>
-            <div class="cooldown-overlay"></div>
-          </button>
-          <button class="mobile-skill-btn" data-skill="3">
-            <span class="skill-icon">🔥</span>
-            <span class="skill-num">4</span>
-            <div class="cooldown-overlay"></div>
-          </button>
+          <button class="mobile-skill-btn" data-skill="2"><span class="skill-icon">💥</span><span class="skill-num">2</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="3"><span class="skill-icon">🌀</span><span class="skill-num">3</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="4"><span class="skill-icon">➡️</span><span class="skill-num">4</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="5"><span class="skill-icon">💚</span><span class="skill-num">5</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="6"><span class="skill-icon">🌪️</span><span class="skill-num">6</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="7"><span class="skill-icon">🐉</span><span class="skill-num">7</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="8"><span class="skill-icon">☠️</span><span class="skill-num">8</span><div class="cooldown-overlay"></div></button>
+          <button class="mobile-skill-btn" data-skill="9"><span class="skill-icon">🌋</span><span class="skill-num">9</span><div class="cooldown-overlay"></div></button>
         </div>
         
         <!-- Mobile Potion Bar -->
@@ -317,6 +333,7 @@
           <button class="mobile-menu-item" data-panel="quest-panel">📜 Quests</button>
           <button class="mobile-menu-item" data-panel="job-panel">🐪 Job</button>
           <button class="mobile-menu-item" data-panel="enhance-panel">✨ Forge</button>
+          <button class="mobile-menu-item" data-panel="trainer-panel">🥋 Trainer</button>
         </div>
       </div>
     </div>
@@ -484,6 +501,18 @@
       </div>
     </div>
     
+    <!-- Trainer Panel -->
+    <div id="trainer-panel" class="panel hidden">
+      <div class="panel-header">
+        <h2>Master Kael — Skill Trainer</h2>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="panel-content">
+        <p class="forge-intro">Learn advanced skills and upgrade each strike up to level 5. Cost and character level rise with every upgrade.</p>
+        <div id="trainer-skill-list"></div>
+      </div>
+    </div>
+    
     <!-- Death Screen -->
     <div id="death-screen" class="overlay hidden">
       <div class="death-content">
@@ -515,6 +544,6 @@
   </div>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="js/game.js?v=11"></script>
+  <script src="js/game.js?v=12"></script>
 </body>
 </html>

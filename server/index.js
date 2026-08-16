@@ -4,6 +4,19 @@ import { Server } from 'socket.io';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  SKILL_DEFS,
+  isRangedClass,
+  resolveSkill,
+  isSkillKnown,
+  applyLevelUnlocks,
+  skillPower,
+  upgradeCost,
+  upgradeLevelReq,
+  defaultSkillLevels,
+  defaultLearnedSkills,
+  buildSkillHud
+} from './skills.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +36,7 @@ app.use(express.static(path.join(__dirname, '../client')));
 const gameState = {
   players: new Map(),
   npcs: new Map(),
+  townNpcs: new Map(),
   items: new Map(),
   caravans: new Map(),
   dropItems: new Map()
@@ -36,13 +50,7 @@ const classData = {
     baseStats: { strength: 28, agility: 20, vitality: 25, energy: 10 },
     healthPerVit: 3,
     manaPerEnergy: 1,
-    damagePerStr: 1.2,
-    skills: {
-      twistingSlash: { name: 'Twisting Slash', damage: 35, cooldown: 2000, mana: 10, range: 4, aoe: true, aoeRadius: 3 },
-      deathStab: { name: 'Death Stab', damage: 50, cooldown: 3000, mana: 15, range: 3 },
-      ragefulBlow: { name: 'Rageful Blow', damage: 80, cooldown: 6000, mana: 25, range: 4 },
-      comboSlash: { name: 'Combo Slash', damage: 100, cooldown: 8000, mana: 35, range: 3, combo: true }
-    }
+    damagePerStr: 1.2
   },
   darkWizard: {
     name: 'Dark Wizard',
@@ -50,13 +58,7 @@ const classData = {
     baseStats: { strength: 10, agility: 15, vitality: 15, energy: 35 },
     healthPerVit: 2,
     manaPerEnergy: 2.5,
-    damagePerEnergy: 1.5,
-    skills: {
-      fireBall: { name: 'Fire Ball', damage: 30, cooldown: 1500, mana: 8, range: 20, projectile: true },
-      powerWave: { name: 'Power Wave', damage: 25, cooldown: 2000, mana: 12, range: 15, aoe: true, aoeRadius: 4 },
-      hellFire: { name: 'Hell Fire', damage: 60, cooldown: 5000, mana: 30, range: 25, aoe: true, aoeRadius: 5 },
-      inferno: { name: 'Inferno', damage: 120, cooldown: 10000, mana: 50, range: 20, aoe: true, aoeRadius: 8 }
-    }
+    damagePerEnergy: 1.5
   },
   fairyElf: {
     name: 'Fairy Elf',
@@ -64,13 +66,7 @@ const classData = {
     baseStats: { strength: 15, agility: 30, vitality: 18, energy: 20 },
     healthPerVit: 2,
     manaPerEnergy: 1.5,
-    damagePerAgi: 1.3,
-    skills: {
-      tripleShot: { name: 'Triple Shot', damage: 25, cooldown: 1500, mana: 8, range: 30, projectiles: 3 },
-      penetration: { name: 'Penetration', damage: 45, cooldown: 3000, mana: 15, range: 35, pierce: true },
-      iceArrow: { name: 'Ice Arrow', damage: 35, cooldown: 4000, mana: 20, range: 30, slow: 0.5 },
-      heal: { name: 'Heal', damage: -60, cooldown: 8000, mana: 40, range: 15, targetAlly: true }
-    }
+    damagePerAgi: 1.3
   },
   bicheon: {
     name: 'Bicheon',
@@ -78,13 +74,7 @@ const classData = {
     baseStats: { strength: 25, agility: 25, vitality: 22, energy: 12 },
     healthPerVit: 2.5,
     manaPerEnergy: 1.2,
-    damagePerStr: 1.1,
-    skills: {
-      chainSword: { name: 'Chain Sword', damage: 30, cooldown: 1800, mana: 10, range: 5, hits: 3 },
-      snowFlower: { name: 'Snow Flower Sword', damage: 55, cooldown: 4000, mana: 20, range: 6, aoe: true, aoeRadius: 4 },
-      flyingDragon: { name: 'Flying Dragon Spear', damage: 70, cooldown: 5000, mana: 25, range: 8 },
-      thunderAssault: { name: 'Thunder Assault', damage: 90, cooldown: 8000, mana: 35, range: 3, dash: true }
-    }
+    damagePerStr: 1.1
   },
   heuksal: {
     name: 'Heuksal',
@@ -92,13 +82,7 @@ const classData = {
     baseStats: { strength: 22, agility: 28, vitality: 18, energy: 15 },
     healthPerVit: 2,
     manaPerEnergy: 1.3,
-    damagePerAgi: 1.2,
-    skills: {
-      shadowStrike: { name: 'Shadow Strike', damage: 40, cooldown: 2000, mana: 12, range: 5, stealth: true },
-      phantomSlash: { name: 'Phantom Slash', damage: 55, cooldown: 3500, mana: 18, range: 6, bleed: true },
-      darkCloud: { name: 'Dark Cloud', damage: 65, cooldown: 5000, mana: 25, range: 8, aoe: true, aoeRadius: 5 },
-      assassinate: { name: 'Assassinate', damage: 150, cooldown: 12000, mana: 45, range: 3, critBonus: 2.0 }
-    }
+    damagePerAgi: 1.2
   }
 };
 
@@ -332,7 +316,20 @@ function initializeWorld() {
     gameState.npcs.set(npc.id, npc);
   });
 
-  console.log(`Initialized ${gameState.npcs.size} monsters`);
+  gameState.townNpcs.set('npc-trainer', {
+    id: 'npc-trainer',
+    name: 'Master Kael',
+    title: 'Skill Trainer',
+    type: 'trainer',
+    friendly: true,
+    class: 'darkKnight',
+    gender: 'male',
+    outfitId: 'royal',
+    level: 99,
+    position: { x: 10, y: 0, z: 8 }
+  });
+
+  console.log(`Initialized ${gameState.npcs.size} monsters and ${gameState.townNpcs.size} town NPCs`);
 }
 
 // Calculate XP required for level (MU-style exponential)
@@ -404,7 +401,8 @@ function createPlayer(socketId, name, playerClass, gender) {
     velocity: { x: 0, y: 0, z: 0 },
     statPoints: { strength: 0, agility: 0, vitality: 0, energy: 0 },
     freeStatPoints: 0,
-    skills: classInfo.skills,
+    skillLevels: defaultSkillLevels(),
+    learnedSkills: defaultLearnedSkills(),
     skillCooldowns: {},
     inventory: [
       { ...itemTemplates.smallHealPotion, quantity: 20 },
@@ -462,65 +460,30 @@ function createPlayer(socketId, name, playerClass, gender) {
   player.mana = newStats.maxMana;
   player.maxHealth = newStats.maxHealth;
   player.maxMana = newStats.maxMana;
+  player.skills = buildSkillHud(player);
+  player.ranged = isRangedClass(player.class);
 
   return player;
 }
 
 // Handle combat with combo system
-function handleCombat(attacker, defender, skillName = null) {
-  if (defender.dead) return null;
+function refreshPlayerSkills(player) {
+  player.skills = buildSkillHud(player);
+  player.ranged = isRangedClass(player.class);
+}
 
-  let baseDamage = attacker.stats ? attacker.stats.damage : attacker.damage;
-  let isMagic = false;
-  let manaCost = 0;
-  let skill = null;
-
-  // Basic attack (no skill): free, 1 second cooldown, uses base stat damage
-  if (!skillName && attacker.skillCooldowns) {
-    const now = Date.now();
-    if (now - (attacker.skillCooldowns.__basic || 0) < 1000) {
-      return { error: 'Attack on cooldown' };
-    }
-    attacker.skillCooldowns.__basic = now;
-  }
-
-  if (skillName && attacker.skills && attacker.skills[skillName]) {
-    skill = attacker.skills[skillName];
-    baseDamage = skill.damage;
-    manaCost = skill.mana;
-    isMagic = skill.projectile || false;
-
-    if (attacker.mana !== undefined && attacker.mana < manaCost) {
-      return { error: 'Not enough mana' };
-    }
-
-    const now = Date.now();
-    const lastUsed = attacker.skillCooldowns?.[skillName] || 0;
-    if (now - lastUsed < skill.cooldown) {
-      return { error: 'Skill on cooldown' };
-    }
-
-    if (attacker.skillCooldowns) attacker.skillCooldowns[skillName] = now;
-    if (attacker.mana !== undefined) attacker.mana -= manaCost;
-  }
-
-  // Add magic damage for wizards
+function applySkillHit(attacker, defender, baseDamage, isMagic, skillSlot, skill) {
   if (isMagic && attacker.stats?.magicDamage) {
     baseDamage += attacker.stats.magicDamage * 0.5;
   }
 
-  // Calculate defense
   const defense = defender.stats ? defender.stats.defense : 0;
   let actualDamage = Math.max(1, baseDamage - defense * 0.5);
 
-  // Critical hit
   const critChance = attacker.stats?.critChance || 0.05;
   const isCrit = Math.random() < critChance;
-  if (isCrit) {
-    actualDamage *= 1.5;
-  }
+  if (isCrit) actualDamage *= 1.5;
 
-  // Combo bonus
   if (attacker.comboCount !== undefined) {
     const now = Date.now();
     if (now - (attacker.lastComboTime || 0) < 3000) {
@@ -539,7 +502,10 @@ function handleCombat(attacker, defender, skillName = null) {
     attackerId: attacker.id,
     defenderId: defender.id,
     damage: actualDamage,
-    skill: skillName,
+    skill: skill ? skill.name : null,
+    skillSlot: skillSlot || null,
+    effect: skill ? skill.effect : 'slash',
+    ranged: !!(skill && skill.ranged),
     defenderHealth: defender.health,
     attackerMana: attacker.mana,
     critical: isCrit,
@@ -551,14 +517,10 @@ function handleCombat(attacker, defender, skillName = null) {
     defender.dead = true;
     result.killed = true;
 
-    // Drop items and gold for NPCs
     if (defender.xpReward) {
       result.xpReward = defender.xpReward;
       result.goldReward = Math.floor(Math.random() * (defender.goldDrop[1] - defender.goldDrop[0]) + defender.goldDrop[0]);
-
-      // Item drops
       result.drops = generateDrops(defender);
-
       setTimeout(() => {
         respawnNPC(defender.id);
       }, defender.respawnTime);
@@ -566,6 +528,66 @@ function handleCombat(attacker, defender, skillName = null) {
   }
 
   return result;
+}
+
+// skillSlot is 1-9 for players; monsters pass null for a basic melee hit
+function handleCombat(attacker, defender, skillSlot = null) {
+  if (defender && defender.dead) return null;
+
+  let baseDamage = attacker.stats ? attacker.stats.damage : attacker.damage;
+  let isMagic = false;
+  let skill = null;
+  const slot = skillSlot ? Number(skillSlot) : null;
+
+  if (slot && attacker.skillLevels) {
+    if (!isSkillKnown(attacker, slot)) {
+      return { error: 'Skill is locked' };
+    }
+    skill = resolveSkill(attacker.class, slot);
+    const now = Date.now();
+    const lastUsed = attacker.skillCooldowns?.[slot] || 0;
+    if (now - lastUsed < skill.cooldown) {
+      return { error: 'Skill on cooldown' };
+    }
+    if (attacker.mana !== undefined && attacker.mana < skill.mana) {
+      return { error: 'Not enough mana' };
+    }
+
+    attacker.skillCooldowns[slot] = now;
+    if (attacker.mana !== undefined) attacker.mana -= skill.mana;
+
+    const power = skillPower(attacker.skillLevels[slot] || 1);
+    if (skill.selfCast) {
+      const healAmt = Math.floor((attacker.maxHealth || 80) * skill.healMul * power);
+      attacker.health = Math.min(attacker.maxHealth, attacker.health + healAmt);
+      return {
+        attackerId: attacker.id,
+        defenderId: attacker.id,
+        damage: -healAmt,
+        heal: healAmt,
+        skill: skill.name,
+        skillSlot: slot,
+        effect: 'heal',
+        defenderHealth: attacker.health,
+        attackerMana: attacker.mana,
+        critical: false,
+        combo: attacker.comboCount || 0
+      };
+    }
+
+    baseDamage = (attacker.stats?.damage || baseDamage) * skill.damageMul * power;
+    isMagic = skill.projectile || attacker.class === 'darkWizard';
+  } else if (attacker.skillLevels) {
+    return handleCombat(attacker, defender, 1);
+  } else if (attacker.skillCooldowns) {
+    const now = Date.now();
+    if (now - (attacker.skillCooldowns.__basic || 0) < 1000) {
+      return { error: 'Attack on cooldown' };
+    }
+    attacker.skillCooldowns.__basic = now;
+  }
+
+  return applySkillHit(attacker, defender, baseDamage, isMagic, slot, skill);
 }
 
 // Generate item drops
@@ -710,6 +732,9 @@ function awardXP(player, amount) {
     leveledUp = true;
   }
 
+  const unlocked = applyLevelUnlocks(player);
+  refreshPlayerSkills(player);
+
   // Recalculate stats
   const newStats = calculateStats(player);
   player.stats = newStats;
@@ -722,7 +747,7 @@ function awardXP(player, amount) {
     player.mana = player.maxMana;
   }
 
-  return { leveledUp, newLevel: player.level, levelsGained, freeStatPoints: player.freeStatPoints };
+  return { leveledUp, newLevel: player.level, levelsGained, freeStatPoints: player.freeStatPoints, unlockedSkills: unlocked };
 }
 
 // Update quest progress
@@ -854,9 +879,11 @@ io.on('connection', (socket) => {
       player: player,
       players: Array.from(gameState.players.values()).filter(p => p.id !== socket.id),
       npcs: Array.from(gameState.npcs.values()),
+      townNpcs: Array.from(gameState.townNpcs.values()),
       quests: Object.values(questTemplates),
       classes: classData,
-      tradeRoutes: tradeRoutes
+      tradeRoutes: tradeRoutes,
+      skillCatalog: SKILL_DEFS
     });
 
     socket.broadcast.emit('playerJoined', player);
@@ -884,6 +911,32 @@ io.on('connection', (socket) => {
     const player = gameState.players.get(socket.id);
     if (!player || player.dead) return;
 
+    const slot = Number(data.skillSlot || data.skill || 1);
+    const skill = resolveSkill(player.class, slot);
+    if (!skill) {
+      socket.emit('combatError', { error: 'Unknown skill' });
+      return;
+    }
+    if (!isSkillKnown(player, slot)) {
+      socket.emit('combatError', { error: 'Skill is locked' });
+      return;
+    }
+
+    if (skill.selfCast) {
+      const result = handleCombat(player, player, slot);
+      if (result && !result.error) {
+        io.emit('combatResult', result);
+        socket.emit('statsUpdate', {
+          health: player.health,
+          mana: player.mana,
+          combo: player.comboCount
+        });
+      } else if (result && result.error) {
+        socket.emit('combatError', { error: result.error });
+      }
+      return;
+    }
+
     let target;
     if (data.targetType === 'npc') {
       target = gameState.npcs.get(data.targetId);
@@ -891,21 +944,45 @@ io.on('connection', (socket) => {
       target = gameState.players.get(data.targetId);
     }
 
-    if (!target) return;
+    if (!target || target.friendly) return;
 
-    // Basic attack is melee only - same close range where the enemy hits back
-    if (!data.skill) {
-      const ddx = target.position.x - player.position.x;
-      const ddz = target.position.z - player.position.z;
-      if (Math.hypot(ddx, ddz) > 3.5) {
-        socket.emit('combatError', { error: 'Target out of melee range' });
-        return;
-      }
+    const ddx = target.position.x - player.position.x;
+    const ddz = target.position.z - player.position.z;
+    if (Math.hypot(ddx, ddz) > skill.range + 0.6) {
+      socket.emit('combatError', { error: 'Target out of range' });
+      return;
     }
 
-    const result = handleCombat(player, target, data.skill);
+    const primary = handleCombat(player, target, slot);
+    if (primary && primary.error) {
+      socket.emit('combatError', { error: primary.error });
+      return;
+    }
 
-    if (result && !result.error) {
+    const results = [];
+    if (primary) results.push(primary);
+
+    if (skill.aoe && primary && !primary.error) {
+      const origin = skill.ranged ? target.position : player.position;
+      gameState.npcs.forEach((npc) => {
+        if (npc.dead || npc.id === target.id) return;
+        const dx = npc.position.x - origin.x;
+        const dz = npc.position.z - origin.z;
+        if (Math.hypot(dx, dz) <= skill.aoeRadius) {
+          const extra = applySkillHit(
+            player,
+            npc,
+            (player.stats?.damage || 10) * skill.damageMul * skillPower(player.skillLevels[slot] || 1) * 0.7,
+            skill.projectile || player.class === 'darkWizard',
+            slot,
+            skill
+          );
+          if (extra) results.push(extra);
+        }
+      });
+    }
+
+    results.forEach((result) => {
       io.emit('combatResult', result);
 
       if (result.killed && result.xpReward) {
@@ -913,7 +990,7 @@ io.on('connection', (socket) => {
         player.gold += result.goldReward || 0;
         player.zen += result.goldReward || 0;
 
-        updateQuestProgress(player, 'kill', target.type);
+        updateQuestProgress(player, 'kill', gameState.npcs.get(result.defenderId)?.type || target.type);
 
         socket.emit('xpGained', {
           amount: result.xpReward,
@@ -923,10 +1000,11 @@ io.on('connection', (socket) => {
           leveledUp: xpResult.leveledUp,
           newLevel: xpResult.newLevel,
           freeStatPoints: player.freeStatPoints,
-          drops: result.drops
+          drops: result.drops,
+          skills: player.skills,
+          unlockedSkills: xpResult.unlockedSkills || []
         });
 
-        // Add drops to inventory
         if (result.drops) {
           result.drops.forEach(drop => {
             const existing = player.inventory.find(i => i.name === drop.name && i.stackable);
@@ -941,15 +1019,13 @@ io.on('connection', (socket) => {
 
         socket.emit('questUpdate', { quests: player.quests });
       }
+    });
 
-      socket.emit('statsUpdate', {
-        health: player.health,
-        mana: player.mana,
-        combo: player.comboCount
-      });
-    } else if (result && result.error) {
-      socket.emit('combatError', { error: result.error });
-    }
+    socket.emit('statsUpdate', {
+      health: player.health,
+      mana: player.mana,
+      combo: player.comboCount
+    });
   });
 
   socket.on('allocateStat', (data) => {
@@ -1174,6 +1250,86 @@ io.on('connection', (socket) => {
     player.pvpEnabled = !player.pvpEnabled;
     socket.emit('pvpToggled', { pvpEnabled: player.pvpEnabled });
     socket.broadcast.emit('playerPvPChanged', { id: socket.id, pvpEnabled: player.pvpEnabled });
+  });
+
+  socket.on('buySkill', (data) => {
+    const player = gameState.players.get(socket.id);
+    if (!player) return;
+    const slot = Number(data.slot);
+    const def = SKILL_DEFS[slot];
+    if (!def || !def.buy) {
+      socket.emit('trainerResult', { error: 'This skill cannot be purchased' });
+      return;
+    }
+    if (player.learnedSkills[slot]) {
+      socket.emit('trainerResult', { error: 'You already know this skill' });
+      return;
+    }
+    if (player.level < def.buyLevel) {
+      socket.emit('trainerResult', { error: `Requires level ${def.buyLevel}` });
+      return;
+    }
+    if (player.gold < def.buyCost) {
+      socket.emit('trainerResult', { error: 'Not enough Zen' });
+      return;
+    }
+    player.gold -= def.buyCost;
+    player.zen = player.gold;
+    player.learnedSkills[slot] = true;
+    player.skillLevels[slot] = 1;
+    refreshPlayerSkills(player);
+    socket.emit('skillsUpdate', {
+      skills: player.skills,
+      skillLevels: player.skillLevels,
+      learnedSkills: player.learnedSkills,
+      gold: player.gold,
+      zen: player.zen
+    });
+    socket.emit('trainerResult', { ok: true, message: `Learned ${player.skills[slot].name}!` });
+  });
+
+  socket.on('upgradeSkill', (data) => {
+    const player = gameState.players.get(socket.id);
+    if (!player) return;
+    const slot = Number(data.slot);
+    if (!SKILL_DEFS[slot]) {
+      socket.emit('trainerResult', { error: 'Unknown skill' });
+      return;
+    }
+    if (!isSkillKnown(player, slot)) {
+      socket.emit('trainerResult', { error: 'You have not learned this skill yet' });
+      return;
+    }
+    const current = player.skillLevels[slot] || 1;
+    if (current >= 5) {
+      socket.emit('trainerResult', { error: 'Skill is already max level (5)' });
+      return;
+    }
+    const cost = upgradeCost(slot, current);
+    const req = upgradeLevelReq(slot, current + 1);
+    if (player.level < req) {
+      socket.emit('trainerResult', { error: `Requires character level ${req}` });
+      return;
+    }
+    if (player.gold < cost) {
+      socket.emit('trainerResult', { error: 'Not enough Zen' });
+      return;
+    }
+    player.gold -= cost;
+    player.zen = player.gold;
+    player.skillLevels[slot] = current + 1;
+    refreshPlayerSkills(player);
+    socket.emit('skillsUpdate', {
+      skills: player.skills,
+      skillLevels: player.skillLevels,
+      learnedSkills: player.learnedSkills,
+      gold: player.gold,
+      zen: player.zen
+    });
+    socket.emit('trainerResult', {
+      ok: true,
+      message: `${player.skills[slot].name} is now level ${player.skillLevels[slot]}`
+    });
   });
 
   socket.on('chatMessage', (data) => {

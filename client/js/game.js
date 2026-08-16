@@ -28,10 +28,25 @@ const game = {
   delta: 0.016,
   shake: 0,
   moveTarget: null,     // { x, z } - click-to-move destination
-  chaseTargetId: null   // npc id - approach and melee attack
+  chaseTargetId: null,  // npc id - approach until in attack range
+  chaseRange: 3.2,      // stop this far from the target (melee vs ranged)
+  pendingSkill: 1,      // skill slot to fire when in range
+  townNpcs: new Map()
 };
 
-const MELEE_RANGE = 3; // basic attack range - close combat, enemy can hit back too
+const MELEE_RANGE = 3.2;
+const RANGED_RANGE = 14;
+
+function isRangedClass(cls) {
+  return cls === 'darkWizard' || cls === 'fairyElf';
+}
+
+function classAttackRange(cls, slot = 1) {
+  const skill = game.player?.skills?.[slot];
+  if (skill?.range) return skill.range;
+  if (slot === 5) return 20;
+  return isRangedClass(cls) ? RANGED_RANGE : MELEE_RANGE;
+}
 
 // Class icons and skill icons
 const classIcons = {
@@ -42,42 +57,24 @@ const classIcons = {
   heuksal: '🌙'
 };
 
-const skillIcons = {
-  darkKnight: { twistingSlash: '🌀', deathStab: '🗡️', ragefulBlow: '💥', comboSlash: '⚔️' },
-  darkWizard: { fireBall: '🔥', powerWave: '🌊', hellFire: '🔥', inferno: '☄️' },
-  fairyElf: { tripleShot: '🏹', penetration: '➡️', iceArrow: '❄️', heal: '💚' },
-  bicheon: { chainSword: '⛓️', snowFlower: '❄️', flyingDragon: '🐉', thunderAssault: '⚡' },
-  heuksal: { shadowStrike: '🌑', phantomSlash: '👻', darkCloud: '☁️', assassinate: '💀' }
+const SLOT_EFFECTS = {
+  1: { melee: { type: 'slash', color: '#ffd24a', size: 1.1 }, wizard: { type: 'bolt', color: '#aa66ff' }, elf: { type: 'arrows', color: '#c8ff80', count: 1 } },
+  2: { melee: { type: 'slash', color: '#ff5040', size: 1.5 }, wizard: { type: 'projectile', color: '#ff7020', size: 1.2 }, elf: { type: 'arrows', color: '#ffffff', count: 1 } },
+  3: { melee: { type: 'burst', color: '#ffd24a', size: 1.5 }, wizard: { type: 'burst', color: '#40a0ff', size: 1.4 }, elf: { type: 'arrows', color: '#80d0ff', count: 3 } },
+  4: { melee: { type: 'slash', color: '#ffee66', size: 1.7 }, wizard: { type: 'projectile', color: '#d8bbff', size: 1.3 }, elf: { type: 'arrows', color: '#ffffff', count: 1 } },
+  5: { melee: { type: 'heal', color: '#60ff80' }, wizard: { type: 'heal', color: '#a0e0ff' }, elf: { type: 'heal', color: '#60ff80' } },
+  6: { melee: { type: 'burst', color: '#ff8c00', size: 2.0 }, wizard: { type: 'burst', color: '#ff5010', size: 2.1 }, elf: { type: 'burst', color: '#88ffaa', size: 1.8 } },
+  7: { melee: { type: 'slash', color: '#ff2060', size: 2.0 }, wizard: { type: 'bolt', color: '#8844dd' }, elf: { type: 'arrows', color: '#ffd700', count: 1 } },
+  8: { melee: { type: 'burst', color: '#ff3020', size: 2.2 }, wizard: { type: 'burst', color: '#ff8c00', size: 2.3 }, elf: { type: 'arrows', color: '#c8ff80', count: 3 } },
+  9: { melee: { type: 'burst', color: '#ff2020', size: 2.6 }, wizard: { type: 'burst', color: '#aa20ff', size: 2.6 }, elf: { type: 'burst', color: '#44ff88', size: 2.4 } }
 };
 
-// Visual effect per skill: slash / burst / projectile / arrows / bolt / heal
-const skillEffects = {
-  // Dark Knight
-  twistingSlash:  { type: 'slash', color: '#ffd24a', size: 1.5 },
-  deathStab:      { type: 'slash', color: '#ff5040', size: 1.1 },
-  ragefulBlow:    { type: 'burst', color: '#ff3020', size: 1.6 },
-  comboSlash:     { type: 'slash', color: '#ffee66', size: 1.9 },
-  // Dark Wizard
-  fireBall:       { type: 'projectile', color: '#ff7020', size: 1.2 },
-  powerWave:      { type: 'burst', color: '#40a0ff', size: 1.2 },
-  hellFire:       { type: 'burst', color: '#ff5010', size: 1.8 },
-  inferno:        { type: 'burst', color: '#ff8c00', size: 2.3 },
-  // Fairy Elf
-  tripleShot:     { type: 'arrows', color: '#c8ff80', count: 3 },
-  penetration:    { type: 'arrows', color: '#ffffff', count: 1 },
-  iceArrow:       { type: 'projectile', color: '#80d0ff', size: 1 },
-  heal:           { type: 'heal', color: '#60ff80' },
-  // Bicheon
-  chainSword:     { type: 'slash', color: '#ffcc00', size: 1.3 },
-  snowFlower:     { type: 'burst', color: '#a0e0ff', size: 1.4 },
-  flyingDragon:   { type: 'burst', color: '#ffd700', size: 1.8 },
-  thunderAssault: { type: 'bolt', color: '#ffe840' },
-  // Heuksal
-  shadowStrike:   { type: 'slash', color: '#a060ff', size: 1.2 },
-  phantomSlash:   { type: 'slash', color: '#c080ff', size: 1.6 },
-  darkCloud:      { type: 'burst', color: '#7040b0', size: 1.5 },
-  assassinate:    { type: 'slash', color: '#ff2060', size: 2 }
-};
+function effectForSlot(cls, slot) {
+  const pack = SLOT_EFFECTS[slot] || SLOT_EFFECTS[1];
+  if (cls === 'darkWizard') return pack.wizard;
+  if (cls === 'fairyElf') return pack.elf;
+  return pack.melee;
+}
 
 // ============================================================
 // SPRITE FACTORY - pixel art drawn on offscreen canvases
@@ -149,7 +146,7 @@ const BRACER = '#7a5230';
 const CHAR_W = 24;
 const CHAR_H = 34;
 
-// pose: 0 = idle, 1/2 = walk steps, 'atk' = attack stance
+// pose: 0 = idle, 1-4 = walk cycle, 'atk' = attack stance
 function getCharacterSprite(cls, outfitId, dir, gender, pose = 0) {
   const g = gender === 'female' ? 'f' : 'm';
   const key = `char|${cls}|${outfitId || ''}|${dir}|${g}|${pose}`;
@@ -183,34 +180,39 @@ function getCharacterSprite(cls, outfitId, dir, gender, pose = 0) {
   return outlined;
 }
 
-// Legs + boots for front/back views, with walking steps and attack stance
+// Legs + boots for front/back views, with a 4-frame walk cycle and attack stance
 function drawLegsFrontBack(ctx, look, pose) {
   const pantsDark = shadeColor(look.pants, -18);
-  const lLift = pose === 1 ? 1 : 0;   // left leg lifted
-  const rLift = pose === 2 ? 1 : 0;   // right leg lifted
-  const spread = pose === 'atk' ? 1 : 0; // wider stance while attacking
+  let lLift = 0, rLift = 0, lOff = 0, rOff = 0, spread = 0;
+  if (pose === 'atk') {
+    spread = 1;
+  } else if (pose === 1) {
+    lOff = -1; rLift = 2; rOff = 1;   // left planted forward, right swinging
+  } else if (pose === 2) {
+    lLift = 1;                         // passing: left coming through
+  } else if (pose === 3) {
+    rOff = -1; lLift = 2; lOff = 1;   // right planted forward, left swinging
+  } else if (pose === 4) {
+    rLift = 1;                         // passing: right coming through
+  }
 
-  // legs
-  px(ctx, 8 - spread, 22, 3, 6 - lLift, look.pants);
-  px(ctx, 13 + spread, 22, 3, 6 - rLift, look.pants);
-  px(ctx, 10 - spread, 22, 1, 5 - lLift, pantsDark);
-  px(ctx, 13 + spread, 22, 1, 5 - rLift, pantsDark);
-  // knee crease
-  px(ctx, 8 - spread, 25, 3, 1, pantsDark);
-  px(ctx, 13 + spread, 25, 3, 1, pantsDark);
+  px(ctx, 8 - spread + lOff, 22, 3, 6 - lLift, look.pants);
+  px(ctx, 13 + spread + rOff, 22, 3, 6 - rLift, look.pants);
+  px(ctx, 10 - spread + lOff, 22, 1, 5 - lLift, pantsDark);
+  px(ctx, 13 + spread + rOff, 22, 1, 5 - rLift, pantsDark);
+  px(ctx, 8 - spread + lOff, 25, 3, 1, pantsDark);
+  px(ctx, 13 + spread + rOff, 25, 3, 1, pantsDark);
 
-  // boots
-  px(ctx, 8 - spread, 28 - lLift, 3, 3, BOOTS);
-  px(ctx, 13 + spread, 28 - rLift, 3, 3, BOOTS);
-  px(ctx, 7 - spread, 31 - lLift, 4, 2, BOOTS);
-  px(ctx, 13 + spread, 31 - rLift, 4, 2, BOOTS);
-  px(ctx, 7 - spread, 33 - lLift, 4, 1, BOOTS_DARK);
-  px(ctx, 13 + spread, 33 - rLift, 4, 1, BOOTS_DARK);
-  // boot highlights and laces
-  px(ctx, 8 - spread, 28 - lLift, 1, 2, shadeColor(BOOTS, 22));
-  px(ctx, 13 + spread, 28 - rLift, 1, 2, shadeColor(BOOTS, 22));
-  px(ctx, 9 - spread, 29 - lLift, 1, 1, BOOTS_DARK);
-  px(ctx, 14 + spread, 29 - rLift, 1, 1, BOOTS_DARK);
+  px(ctx, 8 - spread + lOff, 28 - lLift, 3, 3, BOOTS);
+  px(ctx, 13 + spread + rOff, 28 - rLift, 3, 3, BOOTS);
+  px(ctx, 7 - spread + lOff, 31 - lLift, 4, 2, BOOTS);
+  px(ctx, 13 + spread + rOff, 31 - rLift, 4, 2, BOOTS);
+  px(ctx, 7 - spread + lOff, 33 - lLift, 4, 1, BOOTS_DARK);
+  px(ctx, 13 + spread + rOff, 33 - rLift, 4, 1, BOOTS_DARK);
+  px(ctx, 8 - spread + lOff, 28 - lLift, 1, 2, shadeColor(BOOTS, 22));
+  px(ctx, 13 + spread + rOff, 28 - rLift, 1, 2, shadeColor(BOOTS, 22));
+  px(ctx, 9 - spread + lOff, 29 - lLift, 1, 1, BOOTS_DARK);
+  px(ctx, 14 + spread + rOff, 29 - rLift, 1, 1, BOOTS_DARK);
 }
 
 // Per-class gear details for extra MU-style realism (front view)
@@ -342,19 +344,25 @@ function drawCharFront(ctx, cls, look, female, pose = 0) {
 
   drawClassDetailsFront(ctx, cls, look, tx, tw);
 
-  // ---- arms: rolled sleeves, bare forearms, bracers ----
-  // while attacking the weapon arm is raised
+  // ---- arms: opposite swing while walking, raised while attacking ----
   const armL = tx - 2, armR = tx + tw;
-  const rArmY = attacking ? 9 : 11;   // right (weapon) arm raised when attacking
-  px(ctx, armL, 11, 2, 5, look.tunic);
+  let lArmY = 11, rArmY = 11;
+  if (attacking) {
+    rArmY = 9;
+  } else if (pose === 1) {
+    lArmY = 12; rArmY = 10; // opposite of left-leg-forward
+  } else if (pose === 3) {
+    lArmY = 10; rArmY = 12;
+  }
+  px(ctx, armL, lArmY, 2, 5, look.tunic);
   px(ctx, armR, rArmY, 2, 5, look.tunic);
-  px(ctx, armL, 15, 2, 1, tunicDark);
+  px(ctx, armL, lArmY + 4, 2, 1, tunicDark);
   px(ctx, armR, rArmY + 4, 2, 1, tunicDark);
-  px(ctx, armL, 16, 2, 3, SKIN);
+  px(ctx, armL, lArmY + 5, 2, 3, SKIN);
   px(ctx, armR, rArmY + 5, 2, 3, SKIN);
-  px(ctx, armL, 17, 2, 2, BRACER);
+  px(ctx, armL, lArmY + 6, 2, 2, BRACER);
   px(ctx, armR, rArmY + 6, 2, 2, BRACER);
-  px(ctx, armL, 19, 2, 2, SKIN);
+  px(ctx, armL, lArmY + 8, 2, 2, SKIN);
   px(ctx, armR, rArmY + 8, 2, 2, SKIN);
 
   // ---- belt with buckle ----
@@ -408,16 +416,23 @@ function drawCharBack(ctx, cls, look, female, pose = 0) {
   }
 
   const armL = tx - 2, armR = tx + tw;
-  const rArmY = attacking ? 9 : 11;
-  px(ctx, armL, 11, 2, 5, look.tunic);
+  let lArmY = 11, rArmY = 11;
+  if (attacking) {
+    rArmY = 9;
+  } else if (pose === 1) {
+    lArmY = 12; rArmY = 10;
+  } else if (pose === 3) {
+    lArmY = 10; rArmY = 12;
+  }
+  px(ctx, armL, lArmY, 2, 5, look.tunic);
   px(ctx, armR, rArmY, 2, 5, look.tunic);
-  px(ctx, armL, 15, 2, 1, tunicDark);
+  px(ctx, armL, lArmY + 4, 2, 1, tunicDark);
   px(ctx, armR, rArmY + 4, 2, 1, tunicDark);
-  px(ctx, armL, 16, 2, 3, SKIN);
+  px(ctx, armL, lArmY + 5, 2, 3, SKIN);
   px(ctx, armR, rArmY + 5, 2, 3, SKIN);
-  px(ctx, armL, 17, 2, 2, BRACER);
+  px(ctx, armL, lArmY + 6, 2, 2, BRACER);
   px(ctx, armR, rArmY + 6, 2, 2, BRACER);
-  px(ctx, armL, 19, 2, 2, SKIN);
+  px(ctx, armL, lArmY + 8, 2, 2, SKIN);
   px(ctx, armR, rArmY + 8, 2, 2, SKIN);
 
   // plain belt (no buckle from behind)
@@ -442,9 +457,11 @@ function drawCharSide(ctx, cls, look, female, pose = 0) {
   const pantsDark = shadeColor(look.pants, -18);
   const hairC = look.hair || '#4a3520';
   const attacking = pose === 'atk';
+  const walking = pose === 1 || pose === 2 || pose === 3 || pose === 4;
+  const lean = attacking ? -1 : (walking ? -1 : 0);
 
-  // ---- head (leaning forward slightly when attacking) ----
-  const hx = attacking ? -1 : 0;
+  // ---- head (leaning into the walk / attack) ----
+  const hx = lean;
   px(ctx, 9 + hx, 2, 6, 7, SKIN);
   if (look.helmet) {
     px(ctx, 8 + hx, 0, 8, 5, look.helmet);
@@ -471,22 +488,35 @@ function drawCharSide(ctx, cls, look, female, pose = 0) {
   }
   px(ctx, 11 + hx, 9, 3, 1, SKIN_SHADE);
 
-  // ---- body ----
-  px(ctx, 9, 10, 7, 8, look.tunic);
-  px(ctx, 15, 11, 1, 7, tunicDark);
-  px(ctx, 9, 11, 1, 7, tunicLight);
-  px(ctx, 12, 13, 1, 4, tunicDark); // fold
+  // ---- body (leans forward while walking) ----
+  px(ctx, 9 + lean, 10, 7, 8, look.tunic);
+  px(ctx, 15 + lean, 11, 1, 7, tunicDark);
+  px(ctx, 9 + lean, 11, 1, 7, tunicLight);
+  px(ctx, 12 + lean, 13, 1, 4, tunicDark); // fold
   if (female) {
-    px(ctx, 9, 15, 1, 3, tunicDark);
-    px(ctx, 14, 15, 1, 3, tunicDark);
+    px(ctx, 9 + lean, 15, 1, 3, tunicDark);
+    px(ctx, 14 + lean, 15, 1, 3, tunicDark);
   }
 
-  // front arm - extended forward when attacking
+  // front arm - opposite of the leading leg while walking
   if (attacking) {
-    px(ctx, 4, 12, 5, 2, look.tunic);   // arm reaching forward
-    px(ctx, 3, 12, 2, 2, SKIN);         // forearm
-    px(ctx, 2, 12, 2, 2, BRACER);       // bracer
-    px(ctx, 1, 12, 2, 2, SKIN);         // hand
+    px(ctx, 4, 12, 5, 2, look.tunic);
+    px(ctx, 3, 12, 2, 2, SKIN);
+    px(ctx, 2, 12, 2, 2, BRACER);
+    px(ctx, 1, 12, 2, 2, SKIN);
+  } else if (pose === 1) {
+    // arm back (opposite of front leg)
+    px(ctx, 12, 11, 2, 5, look.tunic);
+    px(ctx, 12, 15, 2, 1, tunicDark);
+    px(ctx, 13, 16, 2, 3, SKIN);
+    px(ctx, 13, 17, 2, 2, BRACER);
+    px(ctx, 13, 19, 2, 2, SKIN);
+  } else if (pose === 3) {
+    // arm forward
+    px(ctx, 5, 12, 4, 2, look.tunic);
+    px(ctx, 4, 12, 2, 2, SKIN);
+    px(ctx, 4, 13, 2, 2, BRACER);
+    px(ctx, 3, 13, 2, 2, SKIN);
   } else {
     px(ctx, 7, 11, 2, 5, look.tunic);
     px(ctx, 7, 15, 2, 1, tunicDark);
@@ -496,31 +526,47 @@ function drawCharSide(ctx, cls, look, female, pose = 0) {
   }
 
   // belt
-  px(ctx, 9, 18, 7, 2, BELT);
-  px(ctx, 9, 20, 7, 2, look.tunic);
-  px(ctx, 9, 21, 7, 1, tunicDark);
+  px(ctx, 9 + lean, 18, 7, 2, BELT);
+  px(ctx, 9 + lean, 20, 7, 2, look.tunic);
+  px(ctx, 9 + lean, 21, 7, 1, tunicDark);
 
-  // ---- legs: real stride poses ----
+  // ---- legs: 4-frame stride ----
   if (pose === 1) {
-    // stride: front leg forward, back leg behind
-    px(ctx, 7, 22, 3, 6, look.pants);
-    px(ctx, 13, 22, 3, 6, pantsDark);
-    px(ctx, 7, 28, 3, 3, BOOTS);
-    px(ctx, 13, 28, 3, 3, shadeColor(BOOTS, -12));
-    px(ctx, 5, 31, 5, 2, BOOTS);
-    px(ctx, 13, 31, 4, 2, shadeColor(BOOTS, -12));
-    px(ctx, 5, 33, 5, 1, BOOTS_DARK);
-    px(ctx, 13, 33, 4, 1, BOOTS_DARK);
+    px(ctx, 6, 22, 3, 6, look.pants);
+    px(ctx, 14, 22, 3, 6, pantsDark);
+    px(ctx, 6, 28, 3, 3, BOOTS);
+    px(ctx, 14, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 4, 31, 5, 2, BOOTS);
+    px(ctx, 14, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 4, 33, 5, 1, BOOTS_DARK);
+    px(ctx, 14, 33, 4, 1, BOOTS_DARK);
   } else if (pose === 2) {
-    // passing: legs close together
+    px(ctx, 9, 21, 3, 6, look.pants);
+    px(ctx, 12, 22, 3, 5, pantsDark);
+    px(ctx, 9, 27, 3, 3, BOOTS);
+    px(ctx, 12, 27, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 8, 30, 4, 2, BOOTS);
+    px(ctx, 12, 30, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 8, 32, 4, 1, BOOTS_DARK);
+    px(ctx, 12, 32, 4, 1, BOOTS_DARK);
+  } else if (pose === 3) {
+    px(ctx, 13, 22, 3, 6, look.pants);
+    px(ctx, 6, 22, 3, 6, pantsDark);
+    px(ctx, 13, 28, 3, 3, BOOTS);
+    px(ctx, 6, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 13, 31, 5, 2, BOOTS);
+    px(ctx, 4, 31, 5, 2, shadeColor(BOOTS, -12));
+    px(ctx, 13, 33, 5, 1, BOOTS_DARK);
+    px(ctx, 4, 33, 5, 1, BOOTS_DARK);
+  } else if (pose === 4) {
     px(ctx, 10, 22, 3, 6, look.pants);
-    px(ctx, 12, 22, 3, 6, pantsDark);
+    px(ctx, 12, 21, 3, 6, pantsDark);
     px(ctx, 10, 28, 3, 3, BOOTS);
-    px(ctx, 12, 28, 3, 3, shadeColor(BOOTS, -12));
+    px(ctx, 12, 27, 3, 3, shadeColor(BOOTS, -12));
     px(ctx, 9, 31, 4, 2, BOOTS);
-    px(ctx, 12, 31, 4, 2, shadeColor(BOOTS, -12));
+    px(ctx, 12, 30, 4, 2, shadeColor(BOOTS, -12));
     px(ctx, 9, 33, 4, 1, BOOTS_DARK);
-    px(ctx, 12, 33, 4, 1, BOOTS_DARK);
+    px(ctx, 12, 32, 4, 1, BOOTS_DARK);
   } else if (attacking) {
     // lunge stance: wide split
     px(ctx, 6, 22, 3, 6, look.pants);
@@ -1263,7 +1309,7 @@ function initSocket() {
     game.quests = data.quests;
     game.classes = data.classes;
     game.tradeRoutes = data.tradeRoutes;
-    game.skillNames = Object.keys(game.player.skills);
+    game.skillNames = [1, 2, 3, 4, 5, 6, 7, 8, 9];
     initEntity(game.player);
 
     data.players.forEach(p => {
@@ -1276,11 +1322,17 @@ function initSocket() {
       game.npcs.set(npc.id, npc);
     });
 
+    (data.townNpcs || []).forEach(npc => {
+      initEntity(npc);
+      game.townNpcs.set(npc.id, npc);
+    });
+
     updateUI();
     updateQuestPanel();
     updateTradeRoutes();
     addChatMessage(null, `Welcome to MU Legends, ${game.player.name}!`, 'system');
     addChatMessage(null, `You are a Level ${game.player.level} ${game.classes[game.player.class].name}`, 'system');
+    addChatMessage(null, 'Talk to Master Kael in town to upgrade skills. Elves and wizards attack from range — tap a monster to shoot, you will not run into melee.', 'system');
   });
 
   game.socket.on('playerJoined', (player) => {
@@ -1333,8 +1385,9 @@ function initSocket() {
   });
 
   game.socket.on('combatResult', (data) => {
-    const type = data.critical ? 'critical' : 'damage';
-    showDamageNumber(data.defenderId, data.damage, type);
+    const type = data.heal ? 'xp' : (data.critical ? 'critical' : 'damage');
+    if (data.heal) showDamageNumber(data.defenderId, `+${data.heal}`, 'xp');
+    else showDamageNumber(data.defenderId, data.damage, type);
 
     // Spawn hit/spell visual effect
     spawnSkillEffect(data);
@@ -1355,19 +1408,18 @@ function initSocket() {
       }
       let kind = 'slash';
       if (attackerEnt.class === 'darkWizard') kind = 'cast';
-      else if (attackerEnt.class === 'fairyElf') kind = data.skill === 'heal' ? 'cast' : 'bow';
+      else if (attackerEnt.class === 'fairyElf') kind = data.effect === 'heal' ? 'cast' : 'bow';
       attackerEnt.attackAnim = { t: 0, dur: 0.35, kind };
     }
 
     // Start cooldown sweep for my own attacks (server confirmed the hit)
     if (data.attackerId === game.player?.id) {
       const now = performance.now();
-      if (data.skill && game.player.skills[data.skill]) {
-        const cd = game.player.skills[data.skill].cooldown;
-        game.cooldowns[data.skill] = { end: now + cd, dur: cd };
-      } else if (!data.skill) {
-        game.cooldowns.__basic = { end: now + 1000, dur: 1000 };
-      }
+      const slot = data.skillSlot || 1;
+      const skill = game.player.skills?.[slot];
+      const cd = skill?.cooldown || 800;
+      game.cooldowns[slot] = { end: now + cd, dur: cd };
+      if (slot === 1) game.cooldowns.__basic = { end: now + cd, dur: cd };
     }
 
     // Screen shake on critical hits involving the local player
@@ -1408,6 +1460,14 @@ function initSocket() {
       game.player.level = data.newLevel;
       showLevelUp(data.newLevel);
       createLevelUpEffect();
+      if (data.skills) game.player.skills = data.skills;
+      if (data.unlockedSkills?.length) {
+        data.unlockedSkills.forEach((slot) => {
+          const sk = game.player.skills?.[slot];
+          addChatMessage(null, `New skill unlocked: ${sk?.name || ('Skill ' + slot)}`, 'system');
+        });
+        updateSkillBar();
+      }
     }
 
     if (data.drops && data.drops.length > 0) {
@@ -1417,6 +1477,25 @@ function initSocket() {
     }
 
     updateUI();
+  });
+
+  game.socket.on('skillsUpdate', (data) => {
+    if (data.skills) game.player.skills = data.skills;
+    if (data.skillLevels) game.player.skillLevels = data.skillLevels;
+    if (data.learnedSkills) game.player.learnedSkills = data.learnedSkills;
+    if (data.gold !== undefined) {
+      game.player.gold = data.gold;
+      game.player.zen = data.zen ?? data.gold;
+    }
+    updateSkillBar();
+    updateUI();
+    renderTrainerPanel();
+  });
+
+  game.socket.on('trainerResult', (data) => {
+    if (data.error) addChatMessage(null, data.error, 'system');
+    else if (data.message) addChatMessage(null, data.message, 'system');
+    renderTrainerPanel();
   });
 
   game.socket.on('statsUpdate', (data) => {
@@ -1701,7 +1780,7 @@ function updateEntityFacing(ent, dt) {
   const moved = Math.abs(dx) + Math.abs(dz) > 0.01;
   if (moved) {
     ent.facing = getFacing(dx, dz);
-    ent.animPhase = (ent.animPhase || 0) + dt * 10;
+    ent.animPhase = (ent.animPhase || 0) + dt * 14;
   }
   ent.moving = moved;
   ent.lastPos.x = ent.position.x;
@@ -1728,7 +1807,11 @@ function drawCharacter(ctx, ent, isLocal) {
     lungeX = v[0] * lunge;
     lungeY = v[1] * lunge;
   } else if (ent.moving) {
-    pose = (Math.floor(ent.animPhase * 0.8) % 2) + 1; // alternate step frames
+    pose = (Math.floor(ent.animPhase) % 4) + 1;
+    if (ent._lastFoot !== pose && (pose === 1 || pose === 3)) {
+      game.effects.push({ type: 'dust', x: ent.position.x, z: ent.position.z, t: 0, dur: 0.32 });
+    }
+    ent._lastFoot = pose;
   }
 
   const sprite = getCharacterSprite(ent.class, outfitId, ent.facing || 'down', ent.gender, pose);
@@ -1736,7 +1819,9 @@ function drawCharacter(ctx, ent, isLocal) {
   const scale = (game.zoom / 14) * 0.95;
   const w = sprite.width * scale;
   const h = sprite.height * scale;
-  const bob = ent.moving ? Math.sin(ent.animPhase * 2) * 1.2 * scale : 0;
+  const bob = ent.moving
+    ? Math.abs(Math.sin(ent.animPhase * Math.PI)) * 1.8 * scale
+    : Math.sin(game.time * 2.2) * 0.5 * scale;
 
   // selection ring
   if (game.selectedTarget && game.selectedTarget.id === ent.id) {
@@ -1847,6 +1932,40 @@ function drawMonster(ctx, npc) {
   ctx.fillText(label, s.x, s.y - h - 16);
 }
 
+function drawTrainer(ctx, npc) {
+  const s = worldToScreen(npc.position.x, npc.position.z);
+  const sprite = getCharacterSprite(npc.class || 'darkKnight', npc.outfitId || 'royal', 'down', npc.gender || 'male', 0);
+  const scale = (game.zoom / 14) * 1.05;
+  const w = sprite.width * scale;
+  const h = sprite.height * scale;
+  const bob = Math.sin(game.time * 2) * 0.8 * scale;
+
+  ctx.fillStyle = 'rgba(255, 215, 0, 0.28)';
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y + 2, w * 0.55, w * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(s.x, s.y + 2, w * 0.35, w * 0.14, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.drawImage(sprite, s.x - w / 2, s.y - h + bob, w, h);
+
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#000';
+  const label = npc.name;
+  ctx.strokeText(label, s.x, s.y - h - 16);
+  ctx.fillStyle = '#ffd700';
+  ctx.fillText(label, s.x, s.y - h - 16);
+  ctx.font = 'bold 11px Arial';
+  ctx.strokeText(npc.title || 'Trainer', s.x, s.y - h - 2);
+  ctx.fillStyle = '#ffe8a0';
+  ctx.fillText(npc.title || 'Trainer', s.x, s.y - h - 2);
+}
+
 function drawObject(ctx, obj) {
   const sprite = getObjectSprite(obj.kind);
   if (!sprite) return;
@@ -1920,6 +2039,10 @@ function render() {
     if (!npc.dead) drawables.push({ z: npc.position.z, type: 'npc', ref: npc });
   });
 
+  game.townNpcs.forEach(npc => {
+    drawables.push({ z: npc.position.z, type: 'trainer', ref: npc });
+  });
+
   game.players.forEach(p => {
     drawables.push({ z: p.position.z, type: 'player', ref: p });
   });
@@ -1931,6 +2054,7 @@ function render() {
   drawables.forEach(d => {
     if (d.type === 'object') drawObject(ctx, d.ref);
     else if (d.type === 'npc') drawMonster(ctx, d.ref);
+    else if (d.type === 'trainer') drawTrainer(ctx, d.ref);
     else if (d.type === 'player') drawCharacter(ctx, d.ref, false);
     else drawCharacter(ctx, d.ref, true);
   });
@@ -2116,6 +2240,15 @@ function drawEffects(ctx) {
       ctx.fill();
       ctx.globalAlpha = 1;
 
+    } else if (ef.type === 'dust') {
+      const s = worldToScreen(ef.x, ef.z);
+      ctx.globalAlpha = (1 - p) * 0.45;
+      ctx.fillStyle = '#c4b48a';
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + 2, 10 * sc * (0.4 + p), 4 * sc * (0.4 + p), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
     } else if (ef.type === 'heal') {
       const s = worldToScreen(ef.x, ef.z);
       ctx.globalAlpha = 1 - p;
@@ -2165,9 +2298,12 @@ function spawnSkillEffect(data) {
 
   const tx = defender.position.x;
   const tz = defender.position.z;
-  const fx = data.skill ? skillEffects[data.skill] : null;
+  const cls = attacker?.class || game.player?.class;
+  const fx = data.effect
+    ? { type: data.effect, color: data.effect === 'heal' ? '#60ff80' : (data.ranged ? '#aa66ff' : '#ffd24a'), size: 1.2, count: data.effect === 'arrows' ? 1 : undefined }
+    : effectForSlot(cls, data.skillSlot || 1);
 
-  if (!fx) {
+  if (!data.skillSlot && !data.skill && !attacker?.class) {
     // basic hit (e.g. monster attacking a player)
     game.effects.push({ type: 'slash', x: tx, z: tz, color: '#ff6050', size: 0.9, seed: Math.random() * 6.28, t: 0, dur: 0.3 });
     return;
@@ -2187,6 +2323,9 @@ function spawnSkillEffect(data) {
     }
     game.effects.push({ type: 'burst', x: tx, z: tz, color: fx.color, size: 0.7, t: 0.2, dur: 0.5, parts: makeBurstParts() });
   } else if (fx.type === 'bolt') {
+    if (attacker?.position) {
+      game.effects.push({ type: 'projectile', fx: attacker.position.x, fz: attacker.position.z, tx, tz, color: fx.color || '#aa66ff', size: 0.85, t: 0, dur: 0.24 });
+    }
     game.effects.push({ type: 'bolt', x: tx, z: tz, color: fx.color, t: 0, dur: 0.4, seed: Math.random() * 100 });
   } else if (fx.type === 'heal') {
     game.effects.push({ type: 'heal', x: tx, z: tz, color: fx.color, t: 0, dur: 0.9 });
@@ -2243,11 +2382,16 @@ function setupInput() {
       return;
     }
 
-    if (e.code === 'Space') { e.preventDefault(); useBasicAttack(); }
-    if (e.code === 'Digit1') useSkill(0);
-    if (e.code === 'Digit2') useSkill(1);
-    if (e.code === 'Digit3') useSkill(2);
-    if (e.code === 'Digit4') useSkill(3);
+    if (e.code === 'Space') { e.preventDefault(); useSkill(1); }
+    if (e.code === 'Digit1') useSkill(1);
+    if (e.code === 'Digit2') useSkill(2);
+    if (e.code === 'Digit3') useSkill(3);
+    if (e.code === 'Digit4') useSkill(4);
+    if (e.code === 'Digit5') useSkill(5);
+    if (e.code === 'Digit6') useSkill(6);
+    if (e.code === 'Digit7') useSkill(7);
+    if (e.code === 'Digit8') useSkill(8);
+    if (e.code === 'Digit9') useSkill(9);
 
     if (e.code === 'F1') { e.preventDefault(); useItem('Small Heal Potion'); }
     if (e.code === 'F2') { e.preventDefault(); useItem('Small Mana Potion'); }
@@ -2297,6 +2441,7 @@ function setupInput() {
   document.getElementById('quest-btn').addEventListener('click', () => togglePanel('quest-panel'));
   document.getElementById('job-btn').addEventListener('click', () => togglePanel('job-panel'));
   document.getElementById('enhance-btn').addEventListener('click', () => togglePanel('enhance-panel'));
+  document.getElementById('trainer-btn')?.addEventListener('click', () => openTrainerPanel());
 
   document.getElementById('stat-points-indicator')?.addEventListener('click', () => {
     togglePanel('character-panel');
@@ -2316,11 +2461,9 @@ function setupInput() {
     });
   });
 
-  document.querySelectorAll('.skill-slot:not(.item-slot):not(.basic-slot)').forEach((slot, index) => {
-    slot.addEventListener('click', () => useSkill(index));
+  document.querySelectorAll('.skill-slot[data-skill]').forEach((slot) => {
+    slot.addEventListener('click', () => useSkill(parseInt(slot.dataset.skill, 10)));
   });
-
-  document.querySelector('.skill-slot.basic-slot')?.addEventListener('click', () => useBasicAttack());
 
   document.querySelectorAll('.skill-slot.item-slot').forEach(slot => {
     slot.addEventListener('click', () => useItem(slot.dataset.item));
@@ -2361,20 +2504,26 @@ function handleClick(sx, sy) {
     }
   };
 
+  game.townNpcs.forEach(npc => testEntity(npc, 'trainer'));
   game.npcs.forEach(npc => {
     if (!npc.dead) testEntity(npc, 'npc');
   });
   game.players.forEach(p => testEntity(p, 'player'));
 
   if (best) {
+    if (best.type === 'trainer') {
+      openTrainerPanel();
+      return;
+    }
     selectTarget({ type: best.type, id: best.ent.id });
     if (best.type === 'npc') {
-      // approach the monster and melee attack when in range
+      // Approach only as far as this class's attack range (ranged stays back)
       game.chaseTargetId = best.ent.id;
+      game.chaseRange = classAttackRange(game.player.class, 1) * 0.92;
+      game.pendingSkill = 1;
       game.moveTarget = null;
     }
   } else {
-    // ground click: walk there
     const w = screenToWorld(sx, sy);
     if (Math.abs(w.x) <= 245 && Math.abs(w.z) <= 245) {
       game.moveTarget = { x: w.x, z: w.z };
@@ -2398,7 +2547,7 @@ function setupMobileControls() {
 
   let joystickActive = false;
   let joystickOrigin = { x: 0, y: 0 };
-  const maxDistance = 40;
+  const maxDistance = 52;
 
   joystickBase.addEventListener('touchstart', (e) => {
     e.preventDefault();
@@ -2448,7 +2597,7 @@ function setupMobileControls() {
     attackBtn.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (game.selectedTarget && !game.selectedTarget.dead) {
-        useBasicAttack();
+        useSkill(1);
       } else {
         let nearestNPC = null;
         let nearestDist = Infinity;
@@ -2458,7 +2607,8 @@ function setupMobileControls() {
               npc.position.x - game.player.position.x,
               npc.position.z - game.player.position.z
             );
-            if (dist < nearestDist && dist < 15) {
+            const maxScan = isRangedClass(game.player.class) ? 18 : 8;
+            if (dist < nearestDist && dist < maxScan) {
               nearestDist = dist;
               nearestNPC = npc;
             }
@@ -2466,7 +2616,7 @@ function setupMobileControls() {
         });
         if (nearestNPC) {
           selectTarget({ type: 'npc', id: nearestNPC.id });
-          useBasicAttack();
+          useSkill(1);
         }
       }
     }, { passive: false });
@@ -2540,7 +2690,7 @@ function stepToward(tx, tz, delta) {
   if (movedX || movedZ) {
     game.player.facing = getFacing(dx, dz);
     game.player.moving = true;
-    game.player.animPhase = (game.player.animPhase || 0) + delta * 10;
+    game.player.animPhase = (game.player.animPhase || 0) + delta * 14;
     game.player.rotation = Math.atan2(dx, dz);
     game.socket.emit('playerMove', {
       position: game.player.position,
@@ -2612,52 +2762,65 @@ function updateTargetUI() {
   document.getElementById('target-health-fill').style.width = `${healthPercent}%`;
 }
 
-function useSkill(index) {
+function useSkill(slot) {
+  slot = Number(slot);
+  if (!game.player) return;
+  const skill = game.player.skills?.[slot];
+  if (!skill) return;
+  if (skill.locked) {
+    const req = skill.unlockLevel || skill.buyLevel;
+    if (skill.buy) addChatMessage(null, `${skill.name} must be purchased from the Skill Trainer`, 'system');
+    else addChatMessage(null, `${skill.name} unlocks at level ${req}`, 'system');
+    return;
+  }
+
+  if (skill.selfCast) {
+    fireSkill(slot, { type: 'npc', id: game.player.id });
+    return;
+  }
+
   if (!game.selectedTarget || game.selectedTarget.dead) {
     addChatMessage(null, 'No target selected', 'system');
     return;
   }
 
-  const skillName = game.skillNames[index];
-  if (!skillName) return;
-
-  game.socket.emit('attack', {
-    targetType: game.selectedTarget.targetType,
-    targetId: game.selectedTarget.id,
-    skill: skillName
-  });
-}
-
-// Basic attack: free, no mana, 1 second cooldown, available to all classes
-let lastBasicAttack = 0;
-function useBasicAttack() {
-  if (!game.selectedTarget || game.selectedTarget.dead) return;
-
-  // melee only: if too far, run toward the target first
+  const range = skill.range || classAttackRange(game.player.class, slot);
   const dist = Math.hypot(
     game.selectedTarget.position.x - game.player.position.x,
     game.selectedTarget.position.z - game.player.position.z
   );
-  if (dist > MELEE_RANGE) {
+
+  if (dist > range) {
     if (game.selectedTarget.targetType === 'npc') {
       game.chaseTargetId = game.selectedTarget.id;
+      game.chaseRange = range * 0.92;
+      game.pendingSkill = slot;
       game.moveTarget = null;
     }
     return;
   }
 
-  const now = Date.now();
-  if (now - lastBasicAttack < 1000) return;
-  lastBasicAttack = now;
+  fireSkill(slot, game.selectedTarget);
+}
+
+function fireSkill(slot, target) {
+  const skill = game.player.skills?.[slot];
+  if (!skill) return;
+  const now = performance.now();
+  const cd = game.cooldowns[slot];
+  if (cd && now < cd.end) return;
 
   game.socket.emit('attack', {
-    targetType: game.selectedTarget.targetType,
-    targetId: game.selectedTarget.id,
-    skill: null
+    targetType: target.targetType || 'npc',
+    targetId: target.id,
+    skillSlot: slot
   });
+  game.cooldowns[slot] = { end: now + skill.cooldown, dur: skill.cooldown };
+  if (slot !== 1) game.pendingSkill = 1;
+}
 
-  // optimistic radial cooldown on the basic slot
-  game.cooldowns.__basic = { end: performance.now() + 1000, dur: 1000 };
+function useBasicAttack() {
+  useSkill(1);
 }
 
 // Radial clockwise cooldown sweep (dark overlay clears clockwise)
@@ -2680,23 +2843,15 @@ function updateCooldownUI() {
     }
   };
 
-  // basic attack slot
-  const basicSlot = document.querySelector('.skill-slot.basic-slot');
-  if (basicSlot) {
-    applyToSlot(basicSlot, basicSlot.querySelector('.skill-cooldown'), game.cooldowns.__basic);
-  }
-
-  // desktop skill slots
-  document.querySelectorAll('.skill-row .skill-slot:not(.basic-slot)').forEach((slot, i) => {
-    const skillName = game.skillNames[i];
-    applyToSlot(slot, slot.querySelector('.skill-cooldown'), skillName ? game.cooldowns[skillName] : null);
+  document.querySelectorAll('.skill-slot[data-skill]').forEach((slotEl) => {
+    const slot = parseInt(slotEl.dataset.skill, 10);
+    applyToSlot(slotEl, slotEl.querySelector('.skill-cooldown'), game.cooldowns[slot]);
   });
 
   // mobile skill buttons
   document.querySelectorAll('.mobile-skill-btn').forEach((btn) => {
-    const i = parseInt(btn.dataset.skill);
-    const skillName = game.skillNames[i];
-    applyToSlot(btn, btn.querySelector('.cooldown-overlay'), skillName ? game.cooldowns[skillName] : null);
+    const slot = parseInt(btn.dataset.skill, 10);
+    applyToSlot(btn, btn.querySelector('.cooldown-overlay'), game.cooldowns[slot]);
   });
 }
 
@@ -2771,31 +2926,33 @@ function updateUI() {
 }
 
 function updateSkillBar() {
-  const skills = game.player.skills;
-  const skillNames = Object.keys(skills);
-  const icons = skillIcons[game.player.class] || {};
-  const skillSlots = document.querySelectorAll('.skill-row .skill-slot:not(.basic-slot)');
-
-  skillSlots.forEach((slot, i) => {
-    const skillName = skillNames[i];
-    if (skillName && skills[skillName]) {
-      const skill = skills[skillName];
-      slot.querySelector('.skill-icon').textContent = icons[skillName] || '⚡';
-      slot.querySelector('.skill-name').textContent = skill.name;
-      slot.title = `${skill.name}\nDamage: ${skill.damage}\nMana: ${skill.mana}\nCooldown: ${skill.cooldown / 1000}s`;
-    }
+  const skills = game.player.skills || {};
+  document.querySelectorAll('.skill-slot[data-skill]').forEach((slotEl) => {
+    const slot = parseInt(slotEl.dataset.skill, 10);
+    const skill = skills[slot];
+    if (!skill) return;
+    const icon = slotEl.querySelector('.skill-icon');
+    const name = slotEl.querySelector('.skill-name');
+    if (icon) icon.textContent = skill.locked ? '🔒' : skill.icon;
+    if (name) name.textContent = skill.name;
+    slotEl.classList.toggle('locked', !!skill.locked);
+    const lvl = skill.skillLevel ? ` Lv.${skill.skillLevel}` : '';
+    slotEl.title = skill.locked
+      ? (skill.buy ? `${skill.name} — buy from trainer (Lv ${skill.buyLevel})` : `${skill.name} — unlocks at level ${skill.unlockLevel}`)
+      : `${skill.name}${lvl}\nMana: ${skill.mana}\nCooldown: ${skill.cooldown / 1000}s\nRange: ${skill.range}`;
   });
 
-  const mobileSkillBtns = document.querySelectorAll('.mobile-skill-btn');
-  mobileSkillBtns.forEach((btn, i) => {
-    const skillName = skillNames[i];
-    if (skillName && skills[skillName]) {
-      const iconSpan = btn.querySelector('.skill-icon');
-      if (iconSpan) {
-        iconSpan.textContent = icons[skillName] || '⚡';
-      }
-    }
+  document.querySelectorAll('.mobile-skill-btn').forEach((btn) => {
+    const slot = parseInt(btn.dataset.skill, 10);
+    const skill = skills[slot];
+    if (!skill) return;
+    const iconSpan = btn.querySelector('.skill-icon');
+    if (iconSpan) iconSpan.textContent = skill.locked ? '🔒' : skill.icon;
+    btn.classList.toggle('locked', !!skill.locked);
   });
+
+  const atkBtn = document.getElementById('mobile-attack-btn');
+  if (atkBtn && skills[1]) atkBtn.textContent = skills[1].icon || '⚔️';
 }
 
 function updateSkillBarItems() {
@@ -3207,7 +3364,56 @@ function togglePanel(panelId) {
     updateInventoryUI();
   } else if (panelId === 'character-panel' && !panel.classList.contains('hidden')) {
     updateCharacterUI();
+  } else if (panelId === 'trainer-panel' && !panel.classList.contains('hidden')) {
+    renderTrainerPanel();
   }
+}
+
+function openTrainerPanel() {
+  const panel = document.getElementById('trainer-panel');
+  if (!panel) return;
+  document.querySelectorAll('.panel').forEach(p => { if (p.id !== 'trainer-panel') p.classList.add('hidden'); });
+  panel.classList.remove('hidden');
+  renderTrainerPanel();
+}
+
+function renderTrainerPanel() {
+  const list = document.getElementById('trainer-skill-list');
+  if (!list || !game.player) return;
+  const skills = game.player.skills || {};
+  list.innerHTML = '';
+  for (let slot = 1; slot <= 9; slot++) {
+    const sk = skills[slot];
+    if (!sk) continue;
+    const row = document.createElement('div');
+    row.className = 'trainer-row' + (sk.locked ? ' locked' : '');
+    const lvl = sk.skillLevel || 0;
+    let action = '';
+    if (sk.buy && sk.locked) {
+      action = `<button class="trainer-btn" data-buy="${slot}">Buy ${sk.buyCost.toLocaleString()} Zen (Lv ${sk.buyLevel})</button>`;
+    } else if (!sk.locked && lvl < 5) {
+      action = `<button class="trainer-btn" data-up="${slot}">Upgrade ${sk.nextCost?.toLocaleString() || '?'} Zen (need Lv ${sk.nextLevelReq})</button>`;
+    } else if (!sk.locked) {
+      action = `<span class="trainer-max">MAX</span>`;
+    } else {
+      action = `<span class="trainer-lock">Unlocks at Lv ${sk.unlockLevel}</span>`;
+    }
+    row.innerHTML = `
+      <div class="trainer-icon">${sk.locked ? '🔒' : sk.icon}</div>
+      <div class="trainer-info">
+        <div class="trainer-name">${slot}. ${sk.name} ${lvl ? '· Lv ' + lvl + '/5' : ''}</div>
+        <div class="trainer-meta">Mana ${sk.mana} · CD ${sk.cooldown / 1000}s · Range ${sk.range}</div>
+      </div>
+      <div class="trainer-action">${action}</div>
+    `;
+    list.appendChild(row);
+  }
+  list.querySelectorAll('[data-buy]').forEach(btn => {
+    btn.addEventListener('click', () => game.socket.emit('buySkill', { slot: parseInt(btn.dataset.buy, 10) }));
+  });
+  list.querySelectorAll('[data-up]').forEach(btn => {
+    btn.addEventListener('click', () => game.socket.emit('upgradeSkill', { slot: parseInt(btn.dataset.up, 10) }));
+  });
 }
 
 function closeAllPanels() {
@@ -3277,7 +3483,7 @@ function gameLoop() {
 
       game.player.facing = getFacing(moveX, moveZ);
       game.player.moving = true;
-      game.player.animPhase = (game.player.animPhase || 0) + delta * 10;
+      game.player.animPhase = (game.player.animPhase || 0) + delta * 14;
       game.player.rotation = Math.atan2(moveX, moveZ);
 
       game.socket.emit('playerMove', {
@@ -3286,7 +3492,6 @@ function gameLoop() {
         velocity: { x: moveX * speed, y: 0, z: moveZ * speed }
       });
     } else if (game.chaseTargetId) {
-      // chase a monster and melee it when close enough
       const npc = game.npcs.get(game.chaseTargetId);
       if (!npc || npc.dead) {
         game.chaseTargetId = null;
@@ -3296,15 +3501,14 @@ function gameLoop() {
           npc.position.x - game.player.position.x,
           npc.position.z - game.player.position.z
         );
-        if (dist > MELEE_RANGE * 0.85) {
+        const stopAt = game.chaseRange || classAttackRange(game.player.class, game.pendingSkill || 1) * 0.92;
+        if (dist > stopAt) {
           const res = stepToward(npc.position.x, npc.position.z, delta);
           if (res === -1) {
-            // path blocked - stop chasing
             game.chaseTargetId = null;
             game.player.moving = false;
           }
         } else {
-          // in melee range: face it and auto basic attack
           game.player.moving = false;
           const dx = npc.position.x - game.player.position.x;
           const dz = npc.position.z - game.player.position.z;
@@ -3314,7 +3518,7 @@ function gameLoop() {
           if (game.selectedTarget?.id !== npc.id) {
             selectTarget({ type: 'npc', id: npc.id });
           }
-          useBasicAttack();
+          useSkill(game.pendingSkill || 1);
         }
       }
     } else if (game.moveTarget) {
